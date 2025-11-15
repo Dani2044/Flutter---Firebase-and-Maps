@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "204986415138",
+    "firebase_url": "https://taller-3-4fca0-default-rtdb.firebaseio.com",
+    "project_id": "taller-3-4fca0",
+    "storage_bucket": "taller-3-4fca0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:204986415138:android:b46c801774d834ed12327b",
+        "android_client_info": {
+          "package_name": "com.example.flutterimc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-Wq8wiFUx1LSNkH6BlZAqzxnpiEdFBU8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
