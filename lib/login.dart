@@ -49,26 +49,16 @@ class ButtonWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isFilled) {
-      return ElevatedButton(
-        onPressed: callback,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.black87,
-          minimumSize: const Size(double.infinity, 50),
-        ),
-        child: Text(label),
-      );
-    } else {
-      return ElevatedButton(
-        onPressed: callback,
-        style: ElevatedButton.styleFrom(
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
-        ),
-        child: Text(label),
-      );
-    }
+    return ElevatedButton(
+      onPressed: callback,
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            isFilled ? Theme.of(context).colorScheme.primary : Colors.transparent,
+        foregroundColor: isFilled ? Colors.black87 : Colors.white,
+        minimumSize: const Size(double.infinity, 50),
+      ),
+      child: Text(label),
+    );
   }
 }
 
@@ -82,9 +72,10 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController controllerEmail = TextEditingController();
   final TextEditingController controllerPassword = TextEditingController();
-  final formKey = GlobalKey<FormState>();
 
-  String errorMessage = '';
+  String emailError = '';
+  String passwordError = '';
+  String backendError = '';
 
   @override
   void dispose() {
@@ -93,7 +84,57 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  bool validEmailAddress(String email) {
+    final regex = RegExp(r"^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
+    return regex.hasMatch(email);
+  }
+
+  bool validateForm() {
+    String email = controllerEmail.text.trim();
+    String password = controllerPassword.text.trim();
+
+    if (email.isEmpty) {
+      setState(() {
+        emailError = "Email is empty";
+      });
+      return false;
+    } else {
+      setState(() => emailError = '');
+    }
+
+    if (!validEmailAddress(email)) {
+      setState(() {
+        emailError = "Not a valid email address";
+      });
+      return false;
+    } else {
+      setState(() => emailError = '');
+    }
+
+    if (password.isEmpty) {
+      setState(() {
+        passwordError = "Password is empty";
+      });
+      return false;
+    } else {
+      setState(() => passwordError = '');
+    }
+
+    if (password.length < 6) {
+      setState(() {
+        passwordError = "Password is too short";
+      });
+      return false;
+    } else {
+      setState(() => passwordError = '');
+    }
+
+    return true;
+  }
+
   Future<void> signIn() async {
+    if (!validateForm()) return;
+
     try {
       final auth = context.read<AuthService>();
       await auth.signIn(
@@ -107,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
     } on Exception catch (e) {
       if (!mounted) return;
       setState(() {
-        errorMessage = e.toString();
+        backendError = e.toString();
       });
     }
   }
@@ -117,15 +158,11 @@ class _LoginPageState extends State<LoginPage> {
     return AppBottomBarButtons(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.white,
-          ),
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
         ),
       ),
+
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(30.0),
@@ -137,96 +174,66 @@ class _LoginPageState extends State<LoginPage> {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
                 ),
               ),
+
               const SizedBox(height: 20.0),
-              const Text(
-                '🔑',
-                style: TextStyle(
-                  fontSize: 40,
+              Image.asset("assets/images/login.png", width: 90, height: 90),
+
+              const SizedBox(height: 40),
+
+              // EMAIL FIELD
+              TextField(
+                controller: controllerEmail,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  errorText: emailError.isEmpty ? null : emailError,
                 ),
               ),
-              const SizedBox(height: 50),
-              Form(
-                key: formKey,
-                child: Center(
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: controllerEmail,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                        ),
-                        validator: (String? value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please, enter something';
-                          }
-                          return null;
-                        },
+
+              const SizedBox(height: 10),
+
+              // PASSWORD FIELD
+              TextField(
+                controller: controllerPassword,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  errorText: passwordError.isEmpty ? null : passwordError,
+                ),
+                obscureText: true,
+              ),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            ResetPasswordPage(email: controllerEmail.text),
                       ),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: controllerPassword,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                        ),
-                        obscureText: true,
-                        validator: (String? value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please, enter something';
-                          }
-                          return null;
-                        },
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) {
-                                  return ResetPasswordPage(
-                                    email: controllerEmail.text,
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                          child: const Text('Reset password'),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (errorMessage.isNotEmpty)
-                        Text(
-                          errorMessage,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.redAccent,
-                          ),
-                        ),
-                    ],
-                  ),
+                    );
+                  },
+                  child: const Text('Reset password'),
                 ),
               ),
+
+              if (backendError.isNotEmpty)
+                Text(
+                  backendError,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
             ],
           ),
         ),
       ),
+
       buttons: [
         ButtonWidget(
           isFilled: true,
           label: 'Log in',
-          callback: () {
-            if (formKey.currentState!.validate()) {
-              signIn();
-            }
-          },
+          callback: signIn,
         ),
       ],
     );

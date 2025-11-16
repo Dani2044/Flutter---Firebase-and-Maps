@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'login.dart';
-import 'onboarding.dart';
+import 'register.dart';
 
 class AppBottomBarButtons extends StatelessWidget {
   const AppBottomBarButtons({
@@ -19,7 +19,7 @@ class AppBottomBarButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: appBar,
-      body: body,
+      body: SafeArea(child: body),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.symmetric(
           vertical: 24.0,
@@ -27,6 +27,7 @@ class AppBottomBarButtons extends StatelessWidget {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: buttons,
         ),
       ),
@@ -48,26 +49,16 @@ class ButtonWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isFilled) {
-      return ElevatedButton(
-        onPressed: callback,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.black87,
-          minimumSize: const Size(double.infinity, 50),
-        ),
-        child: Text(label),
-      );
-    } else {
-      return ElevatedButton(
-        onPressed: callback,
-        style: ElevatedButton.styleFrom(
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 50),
-        ),
-        child: Text(label),
-      );
-    }
+    return ElevatedButton(
+      onPressed: callback,
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            isFilled ? Theme.of(context).colorScheme.primary : Colors.transparent,
+        foregroundColor: isFilled ? Colors.black87 : Colors.white,
+        minimumSize: const Size(double.infinity, 50),
+      ),
+      child: Text(label),
+    );
   }
 }
 
@@ -78,85 +69,39 @@ class WelcomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppBottomBarButtons(
       body: Center(
-        child: Column(
-          children: [
-            Expanded(
-              flex: 3,
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.6,
-                child: Center(
-                  child: Image.asset(
-                    "assets/images/welcome.png", // ⬅ remplaza Lottie
-                    fit: BoxFit.cover,
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-                    colorBlendMode: BlendMode.srcATop,
-                  ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 30),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Image.asset(
+                  "assets/images/welcome.png",
+                  width: MediaQuery.of(context).size.width * 0.6,
                 ),
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      FittedBox(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: "Welcome to ",
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              TextSpan(
-                                text: "Flutter Pro",
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        "The ultimate Flutter Pro course",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+              )
+            ],
+          ),
         ),
       ),
+
       buttons: [
         ButtonWidget(
-          label: "Get started",
+          label: "Register",
           isFilled: true,
           callback: () {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const OnboardingPages(),
+                builder: (context) => const RegisterPage(),
               ),
             );
           },
         ),
         const SizedBox(height: 10.0),
         ButtonWidget(
-          label: "Login",
+          label: "Log in",
           callback: () {
             Navigator.push(
               context,

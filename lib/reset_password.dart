@@ -19,6 +19,7 @@ class AppBottomBarButtons extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: appBar,
+      resizeToAvoidBottomInset: true,
       body: body,
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.symmetric(
@@ -70,10 +71,6 @@ class ButtonWidget extends StatelessWidget {
     }
   }
 }
-
-/// ========================
-/// ResetPasswordPage
-/// ========================
 
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({
@@ -153,9 +150,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(30.0),
-        child: Center(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(30.0),
           child: Column(
             children: [
               const SizedBox(height: 60.0),
@@ -164,48 +161,48 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
                 ),
               ),
               const SizedBox(height: 20.0),
-              const Text(
-                '🔐',
-                style: TextStyle(
-                  fontSize: 40,
-                ),
+
+              Image.asset(
+                "assets/images/reset.png",
+                width: 90,
+                height: 90,
               ),
+
               const SizedBox(height: 50),
+
               Form(
                 key: formKey,
-                child: Center(
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: controllerEmail,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                        ),
-                        validator: (String? value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please, enter something';
-                          }
-                          return null;
-                        },
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: controllerEmail,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
                       ),
-                      const SizedBox(height: 10),
-                      if (errorMessage.isNotEmpty)
-                        Text(
-                          errorMessage,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.redAccent,
-                          ),
+                      validator: (String? value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please, enter something';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    if (errorMessage.isNotEmpty)
+                      Text(
+                        errorMessage,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.redAccent,
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
-              const Spacer(),
+
+              const SizedBox(height: 20),
             ],
           ),
         ),
