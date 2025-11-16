@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'auth_service.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
-// For Storage
 // import 'package:firebase_storage/firebase_storage.dart';
 // import 'dart:io';
 
@@ -26,14 +25,8 @@ class AppBottomBarButtons extends StatelessWidget {
       appBar: appBar,
       body: body,
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 24.0,
-          horizontal: 16.0,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: buttons,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+        child: Column(mainAxisSize: MainAxisSize.min, children: buttons),
       ),
     );
   }
@@ -56,8 +49,9 @@ class ButtonWidget extends StatelessWidget {
     return ElevatedButton(
       onPressed: callback,
       style: ElevatedButton.styleFrom(
-        backgroundColor:
-            isFilled ? Theme.of(context).colorScheme.primary : Colors.transparent,
+        backgroundColor: isFilled
+            ? Theme.of(context).colorScheme.primary
+            : Colors.transparent,
         foregroundColor: isFilled ? Colors.black87 : Colors.white,
         minimumSize: const Size(double.infinity, 50),
       ),
@@ -75,22 +69,7 @@ class BottomStepperWidget extends StatelessWidget {
   }
 }
 
-class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
-
-  @override
-  State<RegisterPage> createState() => _RegisterPageState();
-}
-
-class _RegisterPageState extends State<RegisterPage> {
-  // Controladores
-  final TextEditingController controllerFirstName = TextEditingController();
-  final TextEditingController controllerLastName = TextEditingController();
-  final TextEditingController controllerEmail = TextEditingController();
-  final TextEditingController controllerPassword = TextEditingController();
-  final TextEditingController controllerIdNumber = TextEditingController();
-
-  // Estado de validación
+class RegisterFormModel extends ChangeNotifier {
   String firstNameError = '';
   String lastNameError = '';
   String emailError = '';
@@ -99,47 +78,58 @@ class _RegisterPageState extends State<RegisterPage> {
   String locationError = '';
   String backendError = '';
 
-  // Ubicación
   double? latitude;
   double? longitude;
 
-  // Profile image (cuando tengas picker / storage)
   // String? localImagePath;
   // String? uploadedImageUrl;
 
-  @override
-  void dispose() {
-    controllerFirstName.dispose();
-    controllerLastName.dispose();
-    controllerEmail.dispose();
-    controllerPassword.dispose();
-    controllerIdNumber.dispose();
-    super.dispose();
-  }
-
-  bool validEmailAddress(String email) {
+  bool _validEmailAddress(String email) {
     final regex = RegExp(r"^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
     return regex.hasMatch(email);
   }
 
-  bool validateForm() {
-    final firstName = controllerFirstName.text.trim();
-    final lastName = controllerLastName.text.trim();
-    final email = controllerEmail.text.trim();
-    final password = controllerPassword.text.trim();
-    final idNumber = controllerIdNumber.text.trim();
+  void clearBackendError() {
+    backendError = '';
+    notifyListeners();
+  }
+
+  void setBackendError(String message) {
+    backendError = message;
+    notifyListeners();
+  }
+
+  void setLocation({required double lat, required double lng}) {
+    latitude = lat;
+    longitude = lng;
+    locationError = '';
+    notifyListeners();
+  }
+
+  void setLocationError(String message) {
+    locationError = message;
+    notifyListeners();
+  }
+
+  void _resetErrors() {
+    firstNameError = '';
+    lastNameError = '';
+    emailError = '';
+    passwordError = '';
+    idError = '';
+    locationError = '';
+  }
+
+  bool validateForm({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String idNumber,
+  }) {
+    _resetErrors();
 
     bool isValid = true;
-
-    setState(() {
-      firstNameError = '';
-      lastNameError = '';
-      emailError = '';
-      passwordError = '';
-      idError = '';
-      locationError = '';
-      backendError = '';
-    });
 
     if (firstName.isEmpty) {
       firstNameError = 'First name is empty';
@@ -154,7 +144,7 @@ class _RegisterPageState extends State<RegisterPage> {
     if (email.isEmpty) {
       emailError = 'Email is empty';
       isValid = false;
-    } else if (!validEmailAddress(email)) {
+    } else if (!_validEmailAddress(email)) {
       emailError = 'Not a valid email address';
       isValid = false;
     }
@@ -180,18 +170,42 @@ class _RegisterPageState extends State<RegisterPage> {
       isValid = false;
     }
 
-    setState(() {});
-
+    notifyListeners();
     return isValid;
   }
+}
 
-  Future<void> _getCurrentLocation() async {
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final TextEditingController controllerFirstName = TextEditingController();
+  final TextEditingController controllerLastName = TextEditingController();
+  final TextEditingController controllerEmail = TextEditingController();
+  final TextEditingController controllerPassword = TextEditingController();
+  final TextEditingController controllerIdNumber = TextEditingController();
+
+  @override
+  void dispose() {
+    controllerFirstName.dispose();
+    controllerLastName.dispose();
+    controllerEmail.dispose();
+    controllerPassword.dispose();
+    controllerIdNumber.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getCurrentLocation(BuildContext ctx) async {
+    final model = ctx.read<RegisterFormModel>();
+
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() {
-          locationError = 'Location services are disabled.';
-        });
+        model.setLocationError('Location services are disabled.');
         return;
       }
 
@@ -199,18 +213,15 @@ class _RegisterPageState extends State<RegisterPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() {
-            locationError = 'Location permissions are denied.';
-          });
+          model.setLocationError('Location permissions are denied.');
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          locationError =
-              'Location permissions are permanently denied. Enable them in settings.';
-        });
+        model.setLocationError(
+          'Location permissions are permanently denied. Enable them in settings.',
+        );
         return;
       }
 
@@ -221,48 +232,52 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       );
 
-
-      setState(() {
-        latitude = pos.latitude;
-        longitude = pos.longitude;
-        locationError = '';
-      });
+      model.setLocation(lat: pos.latitude, lng: pos.longitude);
     } catch (e) {
-      setState(() {
-        locationError = 'Error getting location: $e';
-      });
+      model.setLocationError('Error getting location: $e');
     }
   }
 
-  Future<void> register() async {
-    if (!validateForm()) return;
+  Future<void> _register(BuildContext ctx) async {
+    final model = ctx.read<RegisterFormModel>();
+    final auth = ctx.read<AuthService>();
+
+    final firstName = controllerFirstName.text.trim();
+    final lastName = controllerLastName.text.trim();
+    final email = controllerEmail.text.trim();
+    final password = controllerPassword.text.trim();
+    final idNumber = controllerIdNumber.text.trim();
+
+    model.clearBackendError();
+
+    final isValid = model.validateForm(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      password: password,
+      idNumber: idNumber,
+    );
+
+    if (!isValid) return;
 
     try {
-      final auth = context.read<AuthService>();
-
-      final cred = await auth.createAccount(
-        email: controllerEmail.text.trim(),
-        password: controllerPassword.text.trim(),
-      );
+      final cred = await auth.createAccount(email: email, password: password);
 
       final user = cred.user;
       if (user == null) {
-        setState(() {
-          backendError = 'User could not be created.';
-        });
+        model.setBackendError('User could not be created.');
         return;
       }
 
-      // Space for Firebase Storage
-      // if (localImagePath != null) {
+      // if (model.localImagePath != null) {
       //   final storageRef = FirebaseStorage.instance
       //       .ref()
       //       .child('profile_images')
       //       .child('${user.uid}.jpg');
       //
-      //   final file = File(localImagePath!);
+      //   final file = File(model.localImagePath!);
       //   await storageRef.putFile(file);
-      //   uploadedImageUrl = await storageRef.getDownloadURL();
+      //   model.uploadedImageUrl = await storageRef.getDownloadURL();
       // }
 
       final dbRef = FirebaseDatabase.instance.refFromURL(
@@ -270,182 +285,196 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       await dbRef.set({
-        'firstName': controllerFirstName.text.trim(),
-        'lastName': controllerLastName.text.trim(),
-        'email': controllerEmail.text.trim(),
-        'idNumber': controllerIdNumber.text.trim(),
-        'latitude': latitude,
-        'longitude': longitude,
-        // 'imageUrl': uploadedImageUrl, // cuando implementes Storage
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'idNumber': idNumber,
+        'latitude': model.latitude,
+        'longitude': model.longitude,
+        // 'imageUrl': model.uploadedImageUrl,
         'createdAt': DateTime.now().toIso8601String(),
       });
 
-      if (!mounted) return;
-      Navigator.pop(context);
+      if (!ctx.mounted) return;
+      Navigator.pop(ctx);
     } on Exception catch (e) {
-      if (!mounted) return;
-      setState(() {
-        backendError = e.toString();
-      });
+      if (!ctx.mounted) return;
+      model.setBackendError(e.toString());
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppBottomBarButtons(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.white,
-          ),
-        ),
-        bottom: const PreferredSize(
-          preferredSize: Size(double.infinity, 24),
-          child: BottomStepperWidget(),
-        ),
-      ),
+    return ChangeNotifierProvider(
+      create: (_) => RegisterFormModel(),
+      child: Builder(
+        builder: (innerCtx) {
+          return AppBottomBarButtons(
+            appBar: AppBar(
+              leading: IconButton(
+                onPressed: () => Navigator.pop(innerCtx),
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+              ),
+              bottom: const PreferredSize(
+                preferredSize: Size(double.infinity, 24),
+                child: BottomStepperWidget(),
+              ),
+            ),
 
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 40.0),
-              const Text(
-                'Register',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+            body: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(30.0),
+                child: Consumer<RegisterFormModel>(
+                  builder: (ctx, model, _) {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 40.0),
+                        const Text(
+                          'Register',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20.0),
+
+                        Image.asset(
+                          "assets/images/register.png",
+                          width: 90,
+                          height: 90,
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        TextField(
+                          controller: controllerFirstName,
+                          decoration: InputDecoration(
+                            labelText: 'First name',
+                            errorText: model.firstNameError.isEmpty
+                                ? null
+                                : model.firstNameError,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        TextField(
+                          controller: controllerLastName,
+                          decoration: InputDecoration(
+                            labelText: 'Last name',
+                            errorText: model.lastNameError.isEmpty
+                                ? null
+                                : model.lastNameError,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        TextField(
+                          controller: controllerEmail,
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            errorText: model.emailError.isEmpty
+                                ? null
+                                : model.emailError,
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 10),
+
+                        TextField(
+                          controller: controllerPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            errorText: model.passwordError.isEmpty
+                                ? null
+                                : model.passwordError,
+                          ),
+                          obscureText: true,
+                        ),
+                        const SizedBox(height: 10),
+
+                        TextField(
+                          controller: controllerIdNumber,
+                          decoration: InputDecoration(
+                            labelText: 'ID number',
+                            errorText: model.idError.isEmpty
+                                ? null
+                                : model.idError,
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 20),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                model.latitude != null &&
+                                        model.longitude != null
+                                    ? 'Lat: ${model.latitude!.toStringAsFixed(5)}\nLng: ${model.longitude!.toStringAsFixed(5)}'
+                                    : 'Location not obtained yet',
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => _getCurrentLocation(innerCtx),
+                              icon: const Icon(Icons.my_location),
+                            ),
+                          ],
+                        ),
+                        if (model.locationError.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              model.locationError,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                          ),
+
+                        const SizedBox(height: 10),
+
+                        // OutlinedButton.icon(
+                        //   onPressed: () async {
+                        //     // final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                        //     // if (picked != null) {
+                        //     //   model.setLocalImagePath(picked.path);
+                        //     // }
+                        //   },
+                        //   icon: const Icon(Icons.image),
+                        //   label: Text(
+                        //     model.localImagePath == null
+                        //         ? 'Select profile image'
+                        //         : 'Image selected',
+                        //   ),
+                        // ),
+                        const SizedBox(height: 10),
+
+                        if (model.backendError.isNotEmpty)
+                          Text(
+                            model.backendError,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 20.0),
+            ),
 
-              Image.asset(
-                "assets/images/register.png",
-                width: 90,
-                height: 90,
+            buttons: [
+              ButtonWidget(
+                isFilled: true,
+                label: 'Register',
+                callback: () => _register(innerCtx),
               ),
-
-              const SizedBox(height: 40),
-
-              TextField(
-                controller: controllerFirstName,
-                decoration: InputDecoration(
-                  labelText: 'First name',
-                  errorText: firstNameError.isEmpty ? null : firstNameError,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: controllerLastName,
-                decoration: InputDecoration(
-                  labelText: 'Last name',
-                  errorText: lastNameError.isEmpty ? null : lastNameError,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: controllerEmail,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  errorText: emailError.isEmpty ? null : emailError,
-                ),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: controllerPassword,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  errorText: passwordError.isEmpty ? null : passwordError,
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: controllerIdNumber,
-                decoration: InputDecoration(
-                  labelText: 'ID number',
-                  errorText: idError.isEmpty ? null : idError,
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 20),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      latitude != null && longitude != null
-                          ? 'Lat: ${latitude!.toStringAsFixed(5)}\nLng: ${longitude!.toStringAsFixed(5)}'
-                          : 'Location not obtained yet',
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _getCurrentLocation,
-                    icon: const Icon(Icons.my_location),
-                  ),
-                ],
-              ),
-              if (locationError.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Text(
-                    locationError,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 10),
-
-              // Here is how the profile image should word when someone fixes the billing account
-              // OutlinedButton.icon(
-              //   onPressed: () async {
-              //     // Aquí podrías usar image_picker para seleccionar la imagen:
-              //     // final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-              //     // if (picked != null) {
-              //     //   setState(() {
-              //     //     localImagePath = picked.path;
-              //     //   });
-              //     // }
-              //   },
-              //   icon: const Icon(Icons.image),
-              //   label: Text(localImagePath == null
-              //       ? 'Select profile image'
-              //       : 'Image selected'),
-              // ),
-
-              const SizedBox(height: 10),
-
-              if (backendError.isNotEmpty)
-                Text(
-                  backendError,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.redAccent,
-                  ),
-                ),
             ],
-          ),
-        ),
+          );
+        },
       ),
-
-      buttons: [
-        ButtonWidget(
-          isFilled: true,
-          label: 'Register',
-          callback: register,
-        ),
-      ],
     );
   }
 }

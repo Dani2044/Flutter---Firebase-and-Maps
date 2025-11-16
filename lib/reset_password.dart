@@ -72,6 +72,20 @@ class ButtonWidget extends StatelessWidget {
   }
 }
 
+class ResetPasswordModel extends ChangeNotifier {
+  String errorMessage = '';
+
+  void setError(String message) {
+    errorMessage = message;
+    notifyListeners();
+  }
+
+  void clearError() {
+    errorMessage = '';
+    notifyListeners();
+  }
+}
+
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({
     super.key,
@@ -87,7 +101,6 @@ class ResetPasswordPage extends StatefulWidget {
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final TextEditingController controllerEmail = TextEditingController();
   final formKey = GlobalKey<FormState>();
-  String errorMessage = '';
 
   @override
   void initState() {
@@ -101,11 +114,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     super.dispose();
   }
 
-  void showSnackBar() {
-    ScaffoldMessenger.of(context).clearMaterialBanners();
-    ScaffoldMessenger.of(context).showSnackBar(
+  void showSnackBar(BuildContext ctx) {
+    ScaffoldMessenger.of(ctx).clearMaterialBanners();
+    ScaffoldMessenger.of(ctx).showSnackBar(
       SnackBar(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: Theme.of(ctx).colorScheme.primary,
         content: const Text(
           'Please check your email',
           style: TextStyle(
@@ -118,106 +131,115 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     );
   }
 
-  Future<void> reset() async {
+  Future<void> reset(BuildContext ctx) async {
+    final auth = ctx.read<AuthService>();
+    final model = ctx.read<ResetPasswordModel>();
+
     try {
-      final auth = context.read<AuthService>();
       await auth.resetPassword(email: controllerEmail.text.trim());
 
-      if (!mounted) return;
-      setState(() {
-        errorMessage = '';
-      });
-      showSnackBar();
+      if (!ctx.mounted) return;
+      model.clearError();
+      showSnackBar(ctx);
     } on Exception catch (e) {
-      if (!mounted) return;
-      setState(() {
-        errorMessage = e.toString();
-      });
+      if (!ctx.mounted) return;
+      model.setError(e.toString());
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppBottomBarButtons(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 60.0),
-              const Text(
-                'Reset password',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+    return ChangeNotifierProvider(
+      create: (_) => ResetPasswordModel(),
+      child: Builder(
+        builder: (innerCtx) {
+          return AppBottomBarButtons(
+            appBar: AppBar(
+              leading: IconButton(
+                onPressed: () {
+                  Navigator.pop(innerCtx);
+                },
+                icon: const Icon(
+                  Icons.arrow_back_ios,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 20.0),
-
-              Image.asset(
-                "assets/images/reset.png",
-                width: 90,
-                height: 90,
-              ),
-
-              const SizedBox(height: 50),
-
-              Form(
-                key: formKey,
+            ),
+            body: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(30.0),
                 child: Column(
                   children: [
-                    TextFormField(
-                      controller: controllerEmail,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
+                    const SizedBox(height: 60.0),
+                    const Text(
+                      'Reset password',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
-                      validator: (String? value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Please, enter something';
-                        }
-                        return null;
-                      },
                     ),
-                    const SizedBox(height: 10),
-                    if (errorMessage.isNotEmpty)
-                      Text(
-                        errorMessage,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.redAccent,
-                        ),
+                    const SizedBox(height: 20.0),
+
+                    Image.asset(
+                      "assets/images/reset.png",
+                      width: 90,
+                      height: 90,
+                    ),
+
+                    const SizedBox(height: 50),
+
+                    Form(
+                      key: formKey,
+                      child: Consumer<ResetPasswordModel>(
+                        builder: (ctx, model, _) {
+                          return Column(
+                            children: [
+                              TextFormField(
+                                controller: controllerEmail,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email',
+                                ),
+                                validator: (String? value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Please, enter something';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                              if (model.errorMessage.isNotEmpty)
+                                Text(
+                                  model.errorMessage,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
+                    ),
+
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 20),
+            ),
+            buttons: [
+              ButtonWidget(
+                isFilled: true,
+                label: 'Reset password',
+                callback: () async {
+                  if (formKey.currentState!.validate()) {
+                    await reset(innerCtx);
+                  }
+                },
+              ),
             ],
-          ),
-        ),
+          );
+        },
       ),
-      buttons: [
-        ButtonWidget(
-          isFilled: true,
-          label: 'Reset password',
-          callback: () async {
-            if (formKey.currentState!.validate()) {
-              await reset();
-            }
-          },
-        ),
-      ],
     );
   }
 }
