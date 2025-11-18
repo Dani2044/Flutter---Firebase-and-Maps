@@ -412,6 +412,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+Future<void> _setUserUnavailable() async {
+  try {
+    final auth = context.read<AuthService>();
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    final ref = FirebaseDatabase.instance.ref('users/${user.uid}/available');
+    await ref.set(false);
+    if (mounted) {
+      setState(() {
+        isAvailable = false;
+      });
+    }
+  } catch (e) {
+    debugPrint('Error al marcar usuario como no disponible: $e');
+  }
+}
+
   @override
   Widget build(BuildContext context) {
     final authService = context.read<AuthService>();
@@ -456,7 +474,10 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             icon: Icon(Icons.logout, color: Colors.redAccent, size: 32),
-            onPressed: () async => await authService.signOut(),
+            onPressed: () async {
+              await _setUserUnavailable();
+              await authService.signOut();
+            }
           ),
         ],
       ),
@@ -524,6 +545,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _setUserUnavailable();
     _positionStreamSubscription?.cancel();
     for (var sub in _userPositionSubscriptions.values) {
       sub.cancel();
