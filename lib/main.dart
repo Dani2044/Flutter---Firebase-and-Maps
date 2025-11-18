@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -8,10 +9,13 @@ import 'dart:math' as math;
 
 import 'auth_service.dart';
 import 'welcome.dart';
+import 'tracking.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   runApp(
     ChangeNotifierProvider(
@@ -21,14 +25,66 @@ void main() async {
   );
 }
 
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // manejar el background message por si es necesario
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    // Configuracion del Firebase Messaging: manejar permisos, guardar el token, etc.
+    final messaging = FirebaseMessaging.instance;
+    messaging.requestPermission();
+
+    // guardar el token cuando este disponible (osea si el usuario ingresa)
+    messaging.getToken().then((token) async {
+      if (authService.currentUser != null) {
+        await authService.updateFcmToken(token);
+      }
+    }).catchError((e) {
+      // ignorar errores de token
+    });
+
+    // manejo de notificacion cuando la app no estaba abierta
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null && message.data['trackedUid'] != null) {
+        final trackedUid = message.data['trackedUid'];
+        if (authService.currentUser != null) {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+            builder: (_) => TrackingPage(trackedUid: trackedUid),
+          ));
+        } else {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+            builder: (_) => const WelcomePage(),
+          ));
+        }
+      }
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final data = message.data;
+      final trackedUid = data['trackedUid'];
+      if (trackedUid != null) {
+        if (authService.currentUser != null) {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+            builder: (_) => TrackingPage(trackedUid: trackedUid),
+          ));
+        } else {
+          navigatorKey.currentState?.push(MaterialPageRoute(
+            builder: (_) => const WelcomePage(),
+          ));
+        }
+      }
+    });
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Flutter Demo',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -65,6 +121,13 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadUserData();
+    // Asegurarse de que el token este guardado para el usuario ingresado
+    FirebaseMessaging.instance.getToken().then((token) {
+      final auth = context.read<AuthService>();
+      if (auth.currentUser != null && token != null) {
+        auth.updateFcmToken(token);
+      }
+    }).catchError((_) {});
   }
 
   /// Calcula la distancia en metros entre dos coordenadas

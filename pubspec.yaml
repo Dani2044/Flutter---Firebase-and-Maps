@@ -39,6 +39,8 @@ dependencies:
   firebase_storage: ^13.0.4
   image_picker: ^1.2.1
   google_maps_flutter: ^2.9.0
+  firebase_messaging: ^14.6.6
+  flutter_local_notifications: ^13.0.0
 
 dev_dependencies:
   flutter_test:

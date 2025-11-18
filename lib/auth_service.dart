@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth firebaseAuth = FirebaseAuth.instance;
@@ -33,6 +34,10 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    // remover token del database antes de salir
+    try {
+      await updateFcmToken(null);
+    } catch (_) {}
     await firebaseAuth.signOut();
     notifyListeners();
   }
@@ -48,6 +53,17 @@ class AuthService extends ChangeNotifier {
   }) async {
     await currentUser!.updateDisplayName(username);
     notifyListeners();
+  }
+
+  Future<void> updateFcmToken(String? token) async {
+    final user = currentUser;
+    if (user == null) return;
+    final ref = FirebaseDatabase.instance.ref('users/${user.uid}/fcmToken');
+    if (token == null) {
+      await ref.remove();
+    } else {
+      await ref.set(token);
+    }
   }
 
   Future<void> deleteAccount({
