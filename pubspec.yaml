@@ -68,6 +68,7 @@ flutter:
   - assets/images/login.png
   - assets/images/register.png
   - assets/images/reset.png
+  - lib/data/points.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

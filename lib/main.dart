@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -54,27 +55,59 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool? isAvailable;
+  LatLng? userPosition;
+  GoogleMapController? _mapController;
+  final Set<Marker> _markers = {};
 
   @override
   void initState() {
     super.initState();
-    _loadAvailability();
+    _loadUserData();
   }
 
-  Future<void> _loadAvailability() async {
+  Future<void> _loadUserData() async {
     final user = context.read<AuthService>().currentUser;
     if (user == null) return;
 
-    final ref = FirebaseDatabase.instance.ref('users/${user.uid}/available');
+    final ref = FirebaseDatabase.instance.ref('users/${user.uid}');
     final snapshot = await ref.get();
 
     if (snapshot.exists) {
-      isAvailable = snapshot.value as bool;
+      final data = snapshot.value as Map<dynamic, dynamic>;
+      isAvailable = (data['available'] ?? false) as bool;
+      final lat = (data['latitude'] ?? 0.0).toDouble();
+      final lng = (data['longitude'] ?? 0.0).toDouble();
+      userPosition = LatLng(lat, lng);
     } else {
       isAvailable = false;
-      await ref.set(false);
+      userPosition = const LatLng(27.34, -122.03);
+      await ref.set({
+        'available': false,
+        'latitude': userPosition!.latitude,
+        'longitude': userPosition!.longitude,
+      });
     }
-    if (mounted) setState(() {});
+
+    if (mounted) {
+      _updateMarker();
+      setState(() {});
+      if (_mapController != null && userPosition != null) {
+        _mapController!.animateCamera(CameraUpdate.newLatLng(userPosition!));
+      }
+    }
+  }
+
+  void _updateMarker() {
+    if (userPosition == null) return;
+    _markers.clear();
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('user_location'),
+        position: userPosition!,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(title: 'Tu ubicación'),
+      ),
+    );
   }
 
   Future<void> _toggleAvailability() async {
@@ -90,6 +123,11 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  static const CameraPosition _initialPosition = CameraPosition(
+    target: LatLng(27.34, -122.03),
+    zoom: 14.4,
+  );
+
   @override
   Widget build(BuildContext context) {
     final authService = context.read<AuthService>();
@@ -99,20 +137,18 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Row(
           children: [
-            Text('Inicio', style: TextStyle(fontWeight: FontWeight.bold)),
-            Spacer(),
-            if (user != null) ...[
+            const Text('Inicio', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Spacer(),
+            if (user != null)
               Text(
                 user.email ?? '',
                 style: TextStyle(
                   fontSize: 18,
-                  color: isAvailable == true ? Colors.green : Colors.grey
-                )
+                  color: isAvailable == true ? Colors.green : Colors.grey,
+                ),
               ),
-            ],
           ],
         ),
-
         actions: [
           IconButton(
             icon: Icon(
@@ -122,21 +158,23 @@ class _HomePageState extends State<HomePage> {
             ),
             onPressed: isAvailable == null ? null : _toggleAvailability,
           ),
-
           IconButton(
-            icon: Icon(Icons.logout, color: Colors.redAccent, size: 32),
+            icon: const Icon(Icons.logout, color: Colors.redAccent, size: 32),
             onPressed: () async => await authService.signOut(),
           ),
         ],
       ),
-      body: Center(
-        child: Text(
-          isAvailable == null
-              ? 'Cargando estado...'
-              : 'Estado: ${isAvailable! ? "Disponible ✅" : "No disponible ❌"}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 18),
-        ),
+      body: GoogleMap(
+        initialCameraPosition: userPosition != null
+            ? CameraPosition(target: userPosition!, zoom: 14.4)
+            : _initialPosition,
+        markers: _markers,
+        onMapCreated: (controller) {
+          _mapController = controller;
+          if (userPosition != null) {
+            controller.animateCamera(CameraUpdate.newLatLng(userPosition!));
+          }
+        },
       ),
     );
   }
