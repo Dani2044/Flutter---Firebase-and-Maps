@@ -32,7 +32,7 @@ void main() async {
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // manejar el background message por si es necesario
+ 
 }
 
 class MyApp extends StatelessWidget {
@@ -242,6 +242,7 @@ class _HomePageState extends State<HomePage> {
                 'firstName': userData['firstName'] ?? 'Usuario',
                 'lastName': userData['lastName'] ?? '',
                 'email': userData['email'] ?? '',
+                'imageUrl': userData['imageUrl'] ?? '',
                 'latitude': (userData['latitude'] ?? 0.0).toDouble(),
                 'longitude': (userData['longitude'] ?? 0.0).toDouble(),
                 'distance': distance,
@@ -692,7 +693,16 @@ class _HomePageState extends State<HomePage> {
                               vertical: 8,
                             ),
                             child: ListTile(
-                              leading: CircleAvatar(child: Text(initials)),
+                              leading: (() {
+                                final imageUrl = (user['imageUrl'] ?? '') as String;
+                                if (imageUrl.isNotEmpty) {
+                                  return CircleAvatar(
+                                    backgroundColor: Colors.grey[300],
+                                    backgroundImage: NetworkImage(imageUrl),
+                                  );
+                                }
+                                return CircleAvatar(child: Text(initials));
+                              })(),
                               title: Text(
                                 '${user['firstName']} ${user['lastName']}',
                                 style: const TextStyle(
