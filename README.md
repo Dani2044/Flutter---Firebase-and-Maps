@@ -1,16 +1,32 @@
-# flutterimc
+# Geolocation and Tracking App with Authentication
 
-A new Flutter project.
+Mobile application built with **Flutter** that allows:
 
-## Getting Started
+* User registration and authentication with **Firebase Auth**
+* Data storage using **Firebase Realtime Database**
+* Uploading and using profile pictures via **Firebase Storage**
+* Real-time location retrieval with **Geolocator**
+* Display of users and positions on **Google Maps**
+* Notification and token handling with **Firebase Cloud Messaging (FCM)**
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## Main Technologies
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+* Flutter / Dart
+* Firebase Auth
+* Firebase Realtime Database
+* Firebase Storage
+* Firebase Cloud Messaging
+* Google Maps Flutter
+* Geolocator
+* Image Picker
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## Team Members
+
+* Laura Garzón
+* Daniel Felipe Castro Moreno
+* Damian Rey Salcedo
+* Arley Bernal Muñetón
