@@ -137,15 +137,18 @@ class _HomePageState extends State<HomePage> {
   bool _deniedOnce = false;
   final Map<String, StreamSubscription<DatabaseEvent>>
   _userPositionSubscriptions = {};
+  StreamSubscription<DatabaseEvent>? _usersSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _listenAvailableUsers();
 
     FirebaseMessaging.instance
         .getToken()
         .then((token) {
+          if (!mounted) return;
           final auth = context.read<AuthService>();
           if (auth.currentUser != null && token != null) {
             auth.updateFcmToken(token);
@@ -195,9 +198,6 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    // cargar usuarios disponibles
-    _loadAvailableUsers();
-
     if (mounted) {
       _updateMarker();
       setState(() {});
@@ -209,64 +209,59 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _loadAvailableUsers() async {
-    try {
-      final ref = FirebaseDatabase.instance.ref('users');
-      final currentUser = context.read<AuthService>().currentUser;
-      final snapshot = await ref.get();
+  // Escuchar cambios de usuarios disponibles
+  void _listenAvailableUsers() {
+    final ref = FirebaseDatabase.instance.ref('users');
+    final currentUser = context.read<AuthService>().currentUser;
 
-      if (snapshot.exists) {
-        final usersData = snapshot.value as Map<dynamic, dynamic>;
-        availableUsers.clear();
+    _usersSubscription = ref.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
 
-        usersData.forEach((uid, userData) {
-          // excluir al usuario actual
-          if (uid == currentUser?.uid) return;
-
-          if (userData is Map<dynamic, dynamic>) {
-            final available = userData['available'] ?? false;
-            if (available == true) {
-              final distance = userPosition != null
-                  ? _calculateDistance(
-                      userPosition!,
-                      LatLng(
-                        (userData['latitude'] ?? 0.0).toDouble(),
-                        (userData['longitude'] ?? 0.0).toDouble(),
-                      ),
-                    )
-                  : 0.0;
-
-              availableUsers.add({
-                'uid': uid,
-                'firstName': userData['firstName'] ?? 'Usuario',
-                'lastName': userData['lastName'] ?? '',
-                'email': userData['email'] ?? '',
-                'imageUrl': userData['imageUrl'] ?? '',
-                'latitude': (userData['latitude'] ?? 0.0).toDouble(),
-                'longitude': (userData['longitude'] ?? 0.0).toDouble(),
-                'distance': distance,
-              });
-            }
-          }
-        });
-
-        // Ordenar por distancia
-        availableUsers.sort(
-          (a, b) =>
-              (a['distance'] as double).compareTo(b['distance'] as double),
-        );
-
-        if (mounted) {
-          setState(() {});
-        }
+      if (data == null) {
+        if (mounted) setState(() => availableUsers = []);
+        return;
       }
-    } catch (e) {
+
+      final List<Map<String, dynamic>> updatedList = [];
+
+      data.forEach((uid, userData) {
+        if (uid == currentUser?.uid) return;
+
+        if (userData is Map<dynamic, dynamic>) {
+          final available = userData['available'] ?? false;
+          if (available == true) {
+            final userLat = (userData['latitude'] ?? 0.0).toDouble();
+            final userLng = (userData['longitude'] ?? 0.0).toDouble();
+
+            final distance = userPosition != null
+                ? _calculateDistance(userPosition!, LatLng(userLat, userLng))
+                : 0.0;
+
+            updatedList.add({
+              'uid': uid,
+              'firstName': userData['firstName'] ?? 'Usuario',
+              'lastName': userData['lastName'] ?? '',
+              'email': userData['email'] ?? '',
+              'imageUrl': userData['imageUrl'] ?? '',
+              'latitude': userLat,
+              'longitude': userLng,
+              'distance': distance,
+            });
+          }
+        }
+      });
+
+      // Ordenar por distancia
+      updatedList.sort(
+        (a, b) => (a['distance'] as double).compareTo(b['distance'] as double),
+      );
+
       if (mounted) {
         setState(() {
-          availableUsers = [];
+          availableUsers = updatedList;
         });
       }
-    }
+    });
   }
 
   void _updateMarker() {
@@ -337,37 +332,31 @@ class _HomePageState extends State<HomePage> {
   );
 
   Future<void> _loadMarkersFromJson() async {
-    try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/points.json',
+    final String jsonString = await rootBundle.loadString('assets/points.json');
+
+    // Decodificar el JSON y acceder a la lista de ubicaciones
+    final Map<String, dynamic> jsonMap = json.decode(jsonString);
+    final List<dynamic> jsonList = jsonMap['locationsArray'];
+
+    for (int i = 0; i < jsonList.length; i++) {
+      final markerData = jsonList[i];
+      final marker = Marker(
+        markerId: MarkerId('json_${markerData['name']}_$i'),
+        position: LatLng(
+          (markerData['latitude'] as num).toDouble(),
+          (markerData['longitude'] as num).toDouble(),
+        ),
+        infoWindow: InfoWindow(
+          title: markerData['name'] as String,
+          snippet:
+              "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
+        ),
       );
+      _otherMarkers.add(marker);
+    }
 
-      // Decodificar el JSON y acceder a la lista de ubicaciones
-      final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      final List<dynamic> jsonList = jsonMap['locationsArray'];
-
-      for (int i = 0; i < jsonList.length; i++) {
-        final markerData = jsonList[i];
-        final marker = Marker(
-          markerId: MarkerId('json_${markerData['name']}_$i'),
-          position: LatLng(
-            (markerData['latitude'] as num).toDouble(),
-            (markerData['longitude'] as num).toDouble(),
-          ),
-          infoWindow: InfoWindow(
-            title: markerData['name'] as String,
-            snippet:
-                "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
-          ),
-        );
-        _otherMarkers.add(marker);
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      print('Error al cargar los marcadores JSON: $e');
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -476,7 +465,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () async {
               await _setUserUnavailable();
               await authService.signOut();
-            }
+            },
           ),
         ],
       ),
@@ -545,10 +534,11 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
-     _setUserUnavailable();
+    _usersSubscription?.cancel();
     for (var sub in _userPositionSubscriptions.values) {
       sub.cancel();
     }
+    _setUserUnavailable();
     super.dispose();
   }
 
@@ -579,6 +569,7 @@ class _HomePageState extends State<HomePage> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Por favor activa los servicios de ubicación.'),
@@ -592,6 +583,7 @@ class _HomePageState extends State<HomePage> {
 
       if (_locationPermission == LocationPermission.denied) {
         if (_deniedOnce) {
+          if (!mounted) return;
           bool shouldRequest = await _showPermissionRationaleDialog(context);
           if (!shouldRequest) return;
         }
@@ -601,6 +593,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       if (_locationPermission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -624,7 +617,7 @@ class _HomePageState extends State<HomePage> {
             18,
           ),
         );
-
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Seguimiento de ubicación iniciado'),
@@ -633,6 +626,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -667,98 +661,108 @@ class _HomePageState extends State<HomePage> {
   void _showAvailableUsersList(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: const BoxDecoration(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'Usuarios Disponibles (${availableUsers.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              decoration: const BoxDecoration(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              Expanded(
-                child: availableUsers.isEmpty
-                    ? const Center(child: Text('No hay usuarios disponibles'))
-                    : ListView.builder(
-                        itemCount: availableUsers.length,
-                        itemBuilder: (context, index) {
-                          final user = availableUsers[index];
-                          final distance = user['distance'] as double;
-                          final distanceKm = distance / 1000;
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Usuarios Disponibles (${availableUsers.length})',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: availableUsers.isEmpty
+                        ? const Center(
+                            child: Text('No hay usuarios disponibles'),
+                          )
+                        : ListView.builder(
+                            itemCount: availableUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = availableUsers[index];
+                              final distance = user['distance'] as double;
+                              final distanceKm = distance / 1000;
 
-                          final String firstNameStr =
-                              (user['firstName'] ?? '') as String;
-                          final String lastNameStr =
-                              (user['lastName'] ?? '') as String;
-                          final String initials = (() {
-                            String s = '';
-                            if (firstNameStr.isNotEmpty)
-                              s += firstNameStr[0].toUpperCase();
-                            if (lastNameStr.isNotEmpty)
-                              s += lastNameStr[0].toUpperCase();
-                            return s.isEmpty ? 'U' : s;
-                          })();
-
-                          return Card(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: ListTile(
-                              leading: (() {
-                                final imageUrl =
-                                    (user['imageUrl'] ?? '') as String;
-                                if (imageUrl.isNotEmpty) {
-                                  return CircleAvatar(
-                                    backgroundColor: Colors.grey[300],
-                                    backgroundImage: NetworkImage(imageUrl),
-                                  );
+                              final String firstNameStr =
+                                  (user['firstName'] ?? '') as String;
+                              final String lastNameStr =
+                                  (user['lastName'] ?? '') as String;
+                              final String initials = (() {
+                                String s = '';
+                                if (firstNameStr.isNotEmpty) {
+                                  s += firstNameStr[0].toUpperCase();
                                 }
-                                return CircleAvatar(child: Text(initials));
-                              })(),
-                              title: Text(
-                                '${user['firstName']} ${user['lastName']}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                if (lastNameStr.isNotEmpty) {
+                                  s += lastNameStr[0].toUpperCase();
+                                }
+                                return s.isEmpty ? 'U' : s;
+                              })();
+
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
                                 ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(user['email'] as String),
-                                  Text(
-                                    'Distancia: ${distanceKm.toStringAsFixed(2)} km',
+                                child: ListTile(
+                                  leading: (() {
+                                    final imageUrl =
+                                        (user['imageUrl'] ?? '') as String;
+                                    if (imageUrl.isNotEmpty) {
+                                      return CircleAvatar(
+                                        backgroundColor: Colors.grey[300],
+                                        backgroundImage: NetworkImage(imageUrl),
+                                      );
+                                    }
+                                    return CircleAvatar(child: Text(initials));
+                                  })(),
+                                  title: Text(
+                                    '${user['firstName']} ${user['lastName']}',
                                     style: const TextStyle(
-                                      color: Colors.blue,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                ],
-                              ),
-                              trailing: ElevatedButton.icon(
-                                onPressed: () {
-                                  _showUserOnMap(user);
-                                  Navigator.pop(context);
-                                },
-                                icon: const Icon(Icons.location_on),
-                                label: const Text('Ver'),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(user['email'] as String),
+                                      Text(
+                                        'Distancia: ${distanceKm.toStringAsFixed(2)} km',
+                                        style: const TextStyle(
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: ElevatedButton.icon(
+                                    onPressed: () {
+                                      _showUserOnMap(user);
+                                      Navigator.pop(context);
+                                    },
+                                    icon: const Icon(Icons.location_on),
+                                    label: const Text('Ver'),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
