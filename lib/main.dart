@@ -154,6 +154,8 @@ class HomePage extends StatelessWidget {
             },
             zoomControlsEnabled: false,
             onMapCreated: (controller) {
+              
+              homeProvider.setMapController(controller);
               if (homeProvider.userPosition != null) {
                 controller.animateCamera(CameraUpdate.newLatLng(homeProvider.userPosition!));
               }
