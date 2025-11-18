@@ -32,7 +32,6 @@ void main() async {
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
- 
 }
 
 class MyApp extends StatelessWidget {
@@ -474,7 +473,10 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent, size: 32),
-            onPressed: () async => await authService.signOut(),
+            onPressed: () async {
+              await _setUserUnavailable();
+              await authService.signOut();
+            }
           ),
         ],
       ),
@@ -543,10 +545,29 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
+     _setUserUnavailable();
     for (var sub in _userPositionSubscriptions.values) {
       sub.cancel();
     }
     super.dispose();
+  }
+
+  Future<void> _setUserUnavailable() async {
+    try {
+      final auth = context.read<AuthService>();
+      final user = auth.currentUser;
+      if (user == null) return;
+
+      final ref = FirebaseDatabase.instance.ref('users/${user.uid}/available');
+      await ref.set(false);
+      if (mounted) {
+        setState(() {
+          isAvailable = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al marcar usuario como no disponible: $e');
+    }
   }
 
   Future<void> _handleLocationButtonPressed() async {
@@ -694,7 +715,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                             child: ListTile(
                               leading: (() {
-                                final imageUrl = (user['imageUrl'] ?? '') as String;
+                                final imageUrl =
+                                    (user['imageUrl'] ?? '') as String;
                                 if (imageUrl.isNotEmpty) {
                                   return CircleAvatar(
                                     backgroundColor: Colors.grey[300],
