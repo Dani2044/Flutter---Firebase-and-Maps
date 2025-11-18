@@ -45,8 +45,6 @@ class _TrackingPageState extends State<TrackingPage> {
           _mapController!.animateCamera(CameraUpdate.newLatLng(trackedPosition!));
         }
       }
-    }, onError: (e) {
-      // ignorar
     });
   }
 

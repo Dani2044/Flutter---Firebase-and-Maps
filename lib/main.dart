@@ -121,8 +121,8 @@ class _HomePageState extends State<HomePage> {
   bool? isAvailable;
   LatLng? userPosition;
   GoogleMapController? _mapController;
-  Marker? _userMarker; // Cambiar de Set<Marker> a Marker?
-  final Set<Marker> _otherMarkers = {}; // Para los otros marcadores
+  Marker? _userMarker;
+  final Set<Marker> _otherMarkers = {};
   List<Map<String, dynamic>> availableUsers = [];
   String? imageURL;
 
@@ -213,7 +213,6 @@ class _HomePageState extends State<HomePage> {
         availableUsers.clear();
 
         usersData.forEach((uid, userData) {
-          // excluir al usuario actual
           if (uid == currentUser?.uid) return;
 
           if (userData is Map<dynamic, dynamic>) {
@@ -243,7 +242,6 @@ class _HomePageState extends State<HomePage> {
           }
         });
 
-        // Ordenar por distancia
         availableUsers.sort(
           (a, b) =>
               (a['distance'] as double).compareTo(b['distance'] as double),
@@ -265,7 +263,6 @@ class _HomePageState extends State<HomePage> {
   void _updateMarker() {
     if (userPosition == null) return;
 
-    // Actualizar solo el marcador del usuario
     _userMarker = Marker(
       markerId: const MarkerId('user_location'),
       position: userPosition!,
@@ -413,6 +410,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+Future<void> _setUserUnavailable() async {
+  try {
+    final auth = context.read<AuthService>();
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    final ref = FirebaseDatabase.instance.ref('users/${user.uid}/available');
+    await ref.set(false);
+    if (mounted) {
+      setState(() {
+        isAvailable = false;
+      });
+    }
+  } catch (e) {
+    debugPrint('Error al marcar usuario como no disponible: $e');
+  }
+}
+
   @override
   Widget build(BuildContext context) {
     final authService = context.read<AuthService>();
@@ -457,7 +472,10 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             icon: Icon(Icons.logout, color: Colors.redAccent, size: 32),
-            onPressed: () async => await authService.signOut(),
+            onPressed: () async {
+              await _setUserUnavailable();
+              await authService.signOut();
+            }
           ),
         ],
       ),
@@ -525,6 +543,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _setUserUnavailable();
     _positionStreamSubscription?.cancel();
     for (var sub in _userPositionSubscriptions.values) {
       sub.cancel();
