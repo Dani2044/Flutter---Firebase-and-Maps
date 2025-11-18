@@ -130,7 +130,6 @@ class _HomePageState extends State<HomePage> {
   Marker? _userMarker; // Cambiar de Set<Marker> a Marker?
   final Set<Marker> _otherMarkers = {}; // Para los otros marcadores
   List<Map<String, dynamic>> availableUsers = [];
-  bool _jsonMarkersLoaded = false;
   String? imageURL;
 
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -144,7 +143,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadUserData();
-    // Asegurarse de que el token este guardado para el usuario ingresado
+
     FirebaseMessaging.instance
         .getToken()
         .then((token) {
@@ -154,6 +153,8 @@ class _HomePageState extends State<HomePage> {
           }
         })
         .catchError((_) {});
+
+    _loadMarkersFromJson();
   }
 
   /// Calcula la distancia en metros entre dos coordenadas
@@ -335,24 +336,6 @@ class _HomePageState extends State<HomePage> {
     zoom: 14.4,
   );
 
-  Future<void> _toggleJsonMarkers() async {
-    if (_jsonMarkersLoaded) {
-      // Si ya están cargados, limpiar solo los marcadores JSON
-      _otherMarkers.removeWhere(
-        (marker) => marker.markerId.value.startsWith('json_'),
-      );
-      setState(() {
-        _jsonMarkersLoaded = false;
-      });
-    } else {
-      // Si no están cargados, cargarlos desde el JSON
-      await _loadMarkersFromJson();
-      setState(() {
-        _jsonMarkersLoaded = true;
-      });
-    }
-  }
-
   Future<void> _loadMarkersFromJson() async {
     try {
       final String jsonString = await rootBundle.loadString(
@@ -506,6 +489,11 @@ class _HomePageState extends State<HomePage> {
             controller.animateCamera(CameraUpdate.newLatLng(userPosition!));
           }
         },
+        onTap: (LatLng pos) {
+          setState(() {
+            _otherMarkers.clear();
+          });
+        },
       ),
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -519,9 +507,21 @@ class _HomePageState extends State<HomePage> {
           ),
           SizedBox(height: 10),
           FloatingActionButton(
-            onPressed: _toggleJsonMarkers,
+            onPressed: () async {
+              if (_otherMarkers.isEmpty) {
+                await _loadMarkersFromJson();
+              } else {
+                setState(() {
+                  _otherMarkers.removeWhere(
+                    (marker) => marker.markerId.value.startsWith('json_'),
+                  );
+                });
+              }
+            },
             tooltip: 'Cargar marcadores JSON',
-            child: Icon(_jsonMarkersLoaded ? Icons.map : Icons.map_outlined),
+            child: Icon(
+              _otherMarkers.isNotEmpty ? Icons.map : Icons.map_outlined,
+            ),
           ),
           SizedBox(height: 10),
           FloatingActionButton(
