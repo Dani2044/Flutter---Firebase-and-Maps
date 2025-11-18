@@ -39,8 +39,8 @@ dependencies:
   firebase_storage: ^13.0.4
   image_picker: ^1.2.1
   google_maps_flutter: ^2.9.0
-  firebase_messaging: ^14.6.6
-  flutter_local_notifications: ^13.0.0
+  firebase_messaging: 16.0.4
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:
@@ -70,7 +70,7 @@ flutter:
   - assets/images/login.png
   - assets/images/register.png
   - assets/images/reset.png
-  - lib/data/points.json
+  - assets/points.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

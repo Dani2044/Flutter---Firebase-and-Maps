@@ -1,11 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'dart:math' as math;
+import 'package:geolocator/geolocator.dart';
 
 import 'auth_service.dart';
 import 'welcome.dart';
@@ -33,7 +38,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -43,26 +49,31 @@ class MyApp extends StatelessWidget {
     messaging.requestPermission();
 
     // guardar el token cuando este disponible (osea si el usuario ingresa)
-    messaging.getToken().then((token) async {
-      if (authService.currentUser != null) {
-        await authService.updateFcmToken(token);
-      }
-    }).catchError((e) {
-      // ignorar errores de token
-    });
+    messaging
+        .getToken()
+        .then((token) async {
+          if (authService.currentUser != null) {
+            await authService.updateFcmToken(token);
+          }
+        })
+        .catchError((e) {
+          // ignorar errores de token
+        });
 
     // manejo de notificacion cuando la app no estaba abierta
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null && message.data['trackedUid'] != null) {
         final trackedUid = message.data['trackedUid'];
         if (authService.currentUser != null) {
-          navigatorKey.currentState?.push(MaterialPageRoute(
-            builder: (_) => TrackingPage(trackedUid: trackedUid),
-          ));
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => TrackingPage(trackedUid: trackedUid),
+            ),
+          );
         } else {
-          navigatorKey.currentState?.push(MaterialPageRoute(
-            builder: (_) => const WelcomePage(),
-          ));
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => const WelcomePage()),
+          );
         }
       }
     });
@@ -72,13 +83,15 @@ class MyApp extends StatelessWidget {
       final trackedUid = data['trackedUid'];
       if (trackedUid != null) {
         if (authService.currentUser != null) {
-          navigatorKey.currentState?.push(MaterialPageRoute(
-            builder: (_) => TrackingPage(trackedUid: trackedUid),
-          ));
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => TrackingPage(trackedUid: trackedUid),
+            ),
+          );
         } else {
-          navigatorKey.currentState?.push(MaterialPageRoute(
-            builder: (_) => const WelcomePage(),
-          ));
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => const WelcomePage()),
+          );
         }
       }
     });
@@ -114,28 +127,42 @@ class _HomePageState extends State<HomePage> {
   bool? isAvailable;
   LatLng? userPosition;
   GoogleMapController? _mapController;
-  final Set<Marker> _markers = {};
+  Marker? _userMarker; // Cambiar de Set<Marker> a Marker?
+  final Set<Marker> _otherMarkers = {}; // Para los otros marcadores
   List<Map<String, dynamic>> availableUsers = [];
+  bool _jsonMarkersLoaded = false;
+  String? imageURL;
+
+  StreamSubscription<Position>? _positionStreamSubscription;
+  bool _isTrackingLocation = false;
+  LocationPermission? _locationPermission;
+  bool _deniedOnce = false;
+  final Map<String, StreamSubscription<DatabaseEvent>>
+  _userPositionSubscriptions = {};
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     // Asegurarse de que el token este guardado para el usuario ingresado
-    FirebaseMessaging.instance.getToken().then((token) {
-      final auth = context.read<AuthService>();
-      if (auth.currentUser != null && token != null) {
-        auth.updateFcmToken(token);
-      }
-    }).catchError((_) {});
+    FirebaseMessaging.instance
+        .getToken()
+        .then((token) {
+          final auth = context.read<AuthService>();
+          if (auth.currentUser != null && token != null) {
+            auth.updateFcmToken(token);
+          }
+        })
+        .catchError((_) {});
   }
 
   /// Calcula la distancia en metros entre dos coordenadas
   double _calculateDistance(LatLng start, LatLng end) {
-    const earthRadius = 6371000; 
+    const earthRadius = 6371000;
     final dLat = (end.latitude - start.latitude) * math.pi / 180;
     final dLng = (end.longitude - start.longitude) * math.pi / 180;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(start.latitude * math.pi / 180) *
             math.cos(end.latitude * math.pi / 180) *
             math.sin(dLng / 2) *
@@ -154,12 +181,13 @@ class _HomePageState extends State<HomePage> {
     if (snapshot.exists) {
       final data = snapshot.value as Map<dynamic, dynamic>;
       isAvailable = (data['available'] ?? false) as bool;
-      final lat = (data['latitude'] ?? 0.0).toDouble();
-      final lng = (data['longitude'] ?? 0.0).toDouble();
+      final lat = (data['latitude'] ?? 4.627561).toDouble();
+      final lng = (data['longitude'] ?? -74.064279).toDouble();
       userPosition = LatLng(lat, lng);
+      imageURL = (data['imageUrl'] ?? '') as String?;
     } else {
       isAvailable = false;
-      userPosition = const LatLng(27.34, -122.03);
+      userPosition = const LatLng(4.627561, -74.064279);
       await ref.set({
         'available': false,
         'latitude': userPosition!.latitude,
@@ -174,7 +202,9 @@ class _HomePageState extends State<HomePage> {
       _updateMarker();
       setState(() {});
       if (_mapController != null && userPosition != null) {
-        _mapController!.animateCamera(CameraUpdate.newLatLng(userPosition!));
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(userPosition!, 16),
+        );
       }
     }
   }
@@ -182,7 +212,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadAvailableUsers() async {
     try {
       final ref = FirebaseDatabase.instance.ref('users');
-        final currentUser = context.read<AuthService>().currentUser;
+      final currentUser = context.read<AuthService>().currentUser;
       final snapshot = await ref.get();
 
       if (snapshot.exists) {
@@ -190,8 +220,8 @@ class _HomePageState extends State<HomePage> {
         availableUsers.clear();
 
         usersData.forEach((uid, userData) {
-                    // excluir al usuario actual
-                    if (uid == currentUser?.uid) return;
+          // excluir al usuario actual
+          if (uid == currentUser?.uid) return;
 
           if (userData is Map<dynamic, dynamic>) {
             final available = userData['available'] ?? false;
@@ -220,14 +250,16 @@ class _HomePageState extends State<HomePage> {
         });
 
         // Ordenar por distancia
-        availableUsers.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+        availableUsers.sort(
+          (a, b) =>
+              (a['distance'] as double).compareTo(b['distance'] as double),
+        );
 
         if (mounted) {
           setState(() {});
         }
       }
     } catch (e) {
-      print('Error cargando usuarios disponibles: $e');
       if (mounted) {
         setState(() {
           availableUsers = [];
@@ -238,38 +270,51 @@ class _HomePageState extends State<HomePage> {
 
   void _updateMarker() {
     if (userPosition == null) return;
-    _markers.clear();
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('user_location'),
-        position: userPosition!,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: const InfoWindow(title: 'Tu ubicación'),
-      ),
+
+    // Actualizar solo el marcador del usuario
+    _userMarker = Marker(
+      markerId: const MarkerId('user_location'),
+      position: userPosition!,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+      infoWindow: InfoWindow(title: 'Tu ubicación'),
     );
   }
 
   void _showUserOnMap(Map<String, dynamic> user) {
-    final userPosition = LatLng(user['latitude'] as double, user['longitude'] as double);
-    final distance = user['distance'] as double;
+    final uid = user['uid'] as String;
+    _userPositionSubscriptions[uid]?.cancel();
 
-    // Agregar marcador del user q escoja
-    _markers.add(
-      Marker(
-        markerId: MarkerId(user['uid'] as String),
-        position: userPosition,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: InfoWindow(
-          title: '${user['firstName']} ${user['lastName']}',
-          snippet: 'Distancia: ${(distance / 1000).toStringAsFixed(2)} km',
+    final ref = FirebaseDatabase.instance.ref('users/$uid');
+    _userPositionSubscriptions[uid] = ref.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data == null) return;
+
+      final lat = (data['latitude'] ?? 0.0).toDouble();
+      final lng = (data['longitude'] ?? 0.0).toDouble();
+      final newPosition = LatLng(lat, lng);
+
+      final markerId = MarkerId(uid);
+      _otherMarkers.removeWhere((m) => m.markerId == markerId);
+      _otherMarkers.add(
+        Marker(
+          markerId: markerId,
+          position: newPosition,
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueOrange,
+          ),
+          infoWindow: InfoWindow(
+            title:
+                '${data['firstName'] ?? 'Usuario'} ${data['lastName'] ?? ''}',
+            snippet:
+                'Distancia: ${(userPosition != null ? _calculateDistance(userPosition!, newPosition) / 1000 : 0).toStringAsFixed(2)} km',
+          ),
         ),
-      ),
-    );
+      );
 
-    // esto es para  q se centre el mapa en el user q se seleccione
-    _mapController?.animateCamera(CameraUpdate.newLatLng(userPosition));
+      _mapController?.animateCamera(CameraUpdate.newLatLng(newPosition));
 
-    setState(() {});
+      setState(() {});
+    });
   }
 
   Future<void> _toggleAvailability() async {
@@ -290,6 +335,117 @@ class _HomePageState extends State<HomePage> {
     zoom: 14.4,
   );
 
+  Future<void> _toggleJsonMarkers() async {
+    if (_jsonMarkersLoaded) {
+      // Si ya están cargados, limpiar solo los marcadores JSON
+      _otherMarkers.removeWhere(
+        (marker) => marker.markerId.value.startsWith('json_'),
+      );
+      setState(() {
+        _jsonMarkersLoaded = false;
+      });
+    } else {
+      // Si no están cargados, cargarlos desde el JSON
+      await _loadMarkersFromJson();
+      setState(() {
+        _jsonMarkersLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _loadMarkersFromJson() async {
+    try {
+      final String jsonString = await rootBundle.loadString(
+        'assets/points.json',
+      );
+
+      // Decodificar el JSON y acceder a la lista de ubicaciones
+      final Map<String, dynamic> jsonMap = json.decode(jsonString);
+      final List<dynamic> jsonList = jsonMap['locationsArray'];
+
+      for (int i = 0; i < jsonList.length; i++) {
+        final markerData = jsonList[i];
+        final marker = Marker(
+          markerId: MarkerId('json_${markerData['name']}_$i'),
+          position: LatLng(
+            (markerData['latitude'] as num).toDouble(),
+            (markerData['longitude'] as num).toDouble(),
+          ),
+          infoWindow: InfoWindow(
+            title: markerData['name'] as String,
+            snippet:
+                "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
+          ),
+        );
+        _otherMarkers.add(marker);
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error al cargar los marcadores JSON: $e');
+    }
+  }
+
+  // Permisos //
+
+  void _startPositionUpdates() {
+    _positionStreamSubscription?.cancel();
+
+    _positionStreamSubscription = Stream.periodic(const Duration(seconds: 5))
+        .asyncMap(
+          (_) => Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
+          ),
+        )
+        .listen((Position position) {
+          _updateUserLocation(position);
+        });
+
+    setState(() {
+      _isTrackingLocation = true;
+    });
+  }
+
+  Future<void> _updateUserLocation(Position position) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null) return;
+
+    final newPosition = LatLng(position.latitude, position.longitude);
+
+    final ref = FirebaseDatabase.instance.ref('users/${user.uid}');
+    await ref.update({
+      'latitude': position.latitude,
+      'longitude': position.longitude,
+    });
+
+    if (mounted) {
+      setState(() {
+        userPosition = newPosition;
+        _updateMarker();
+      });
+    }
+  }
+
+  void _stopLocationTracking() {
+    _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = null;
+
+    setState(() {
+      _isTrackingLocation = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Seguimiento de ubicación detenido'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = context.read<AuthService>();
@@ -299,9 +455,20 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('Inicio', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Spacer(),
-            if (user != null)
+            Text('Inicio', style: TextStyle(fontWeight: FontWeight.bold)),
+            Spacer(),
+            if (user != null) ...[
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.grey[300],
+                backgroundImage: (imageURL != null && imageURL!.isNotEmpty)
+                    ? NetworkImage(imageURL!)
+                    : null,
+                child: (imageURL == null || imageURL!.isEmpty)
+                    ? const Icon(Icons.person, size: 20)
+                    : null,
+              ),
+              const SizedBox(width: 8),
               Text(
                 user.email ?? '',
                 style: TextStyle(
@@ -309,6 +476,7 @@ class _HomePageState extends State<HomePage> {
                   color: isAvailable == true ? Colors.green : Colors.grey,
                 ),
               ),
+            ],
           ],
         ),
         actions: [
@@ -330,7 +498,8 @@ class _HomePageState extends State<HomePage> {
         initialCameraPosition: userPosition != null
             ? CameraPosition(target: userPosition!, zoom: 14.4)
             : _initialPosition,
-        markers: _markers,
+        markers: {if (_userMarker != null) _userMarker!, ..._otherMarkers},
+        zoomControlsEnabled: false,
         onMapCreated: (controller) {
           _mapController = controller;
           if (userPosition != null) {
@@ -338,14 +507,139 @@ class _HomePageState extends State<HomePage> {
           }
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showAvailableUsersList(context);
-        },
-        tooltip: 'Ver usuarios disponibles',
-        child: const Icon(Icons.people),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: () {
+              _showAvailableUsersList(context);
+            },
+            tooltip: 'Ver usuarios disponibles',
+            child: Icon(Icons.people),
+          ),
+          SizedBox(height: 10),
+          FloatingActionButton(
+            onPressed: _toggleJsonMarkers,
+            tooltip: 'Cargar marcadores JSON',
+            child: Icon(_jsonMarkersLoaded ? Icons.map : Icons.map_outlined),
+          ),
+          SizedBox(height: 10),
+          FloatingActionButton(
+            onPressed: _handleLocationButtonPressed,
+            tooltip: _isTrackingLocation
+                ? 'Detener seguimiento'
+                : 'Iniciar seguimiento de ubicación',
+            backgroundColor: _isTrackingLocation ? Colors.cyan : null,
+            child: Icon(
+              _isTrackingLocation ? Icons.location_disabled : Icons.my_location,
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    for (var sub in _userPositionSubscriptions.values) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
+  Future<void> _handleLocationButtonPressed() async {
+    if (_isTrackingLocation) {
+      _stopLocationTracking();
+      return;
+    }
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por favor activa los servicios de ubicación.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      _locationPermission = await Geolocator.checkPermission();
+
+      if (_locationPermission == LocationPermission.denied) {
+        if (_deniedOnce) {
+          bool shouldRequest = await _showPermissionRationaleDialog(context);
+          if (!shouldRequest) return;
+        }
+
+        _locationPermission = await Geolocator.requestPermission();
+        _deniedOnce = true;
+      }
+
+      if (_locationPermission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Permiso denegado permanentemente. Actívalo desde ajustes.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (_locationPermission == LocationPermission.whileInUse ||
+          _locationPermission == LocationPermission.always) {
+        _startPositionUpdates();
+
+        final currentPosition = await Geolocator.getCurrentPosition();
+        _updateUserLocation(currentPosition);
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(
+            LatLng(currentPosition.latitude, currentPosition.longitude),
+            18,
+          ),
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Seguimiento de ubicación iniciado'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<bool> _showPermissionRationaleDialog(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Permiso de ubicación requerido'),
+            content: const Text(
+              'Para mostrar tu posición en el mapa y permitir el seguimiento en tiempo real, '
+              'la aplicación necesita acceder a tu ubicación. '
+              '¿Deseas conceder el permiso?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   void _showAvailableUsersList(BuildContext context) {
@@ -371,9 +665,7 @@ class _HomePageState extends State<HomePage> {
               ),
               Expanded(
                 child: availableUsers.isEmpty
-                    ? const Center(
-                        child: Text('No hay usuarios disponibles'),
-                      )
+                    ? const Center(child: Text('No hay usuarios disponibles'))
                     : ListView.builder(
                         itemCount: availableUsers.length,
                         itemBuilder: (context, index) {
@@ -381,12 +673,16 @@ class _HomePageState extends State<HomePage> {
                           final distance = user['distance'] as double;
                           final distanceKm = distance / 1000;
 
-                          final String firstNameStr = (user['firstName'] ?? '') as String;
-                          final String lastNameStr = (user['lastName'] ?? '') as String;
+                          final String firstNameStr =
+                              (user['firstName'] ?? '') as String;
+                          final String lastNameStr =
+                              (user['lastName'] ?? '') as String;
                           final String initials = (() {
                             String s = '';
-                            if (firstNameStr.isNotEmpty) s += firstNameStr[0].toUpperCase();
-                            if (lastNameStr.isNotEmpty) s += lastNameStr[0].toUpperCase();
+                            if (firstNameStr.isNotEmpty)
+                              s += firstNameStr[0].toUpperCase();
+                            if (lastNameStr.isNotEmpty)
+                              s += lastNameStr[0].toUpperCase();
                             return s.isEmpty ? 'U' : s;
                           })();
 
@@ -396,9 +692,7 @@ class _HomePageState extends State<HomePage> {
                               vertical: 8,
                             ),
                             child: ListTile(
-                              leading: CircleAvatar(
-                                child: Text(initials),
-                              ),
+                              leading: CircleAvatar(child: Text(initials)),
                               title: Text(
                                 '${user['firstName']} ${user['lastName']}',
                                 style: const TextStyle(
