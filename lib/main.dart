@@ -53,8 +53,7 @@ class MyApp extends StatelessWidget {
             await authService.updateFcmToken(token);
           }
         })
-        .catchError((e) {
-        });
+        .catchError((e) {});
 
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null && message.data['trackedUid'] != null) {
@@ -131,25 +130,25 @@ class _HomePageState extends State<HomePage> {
   bool _isTrackingLocation = false;
   LocationPermission? _locationPermission;
   bool _deniedOnce = false;
-  final Map<String, StreamSubscription<DatabaseEvent>>
-  _userPositionSubscriptions = {};
+  final Map<String, StreamSubscription<DatabaseEvent>> _userPositionSubscriptions = {};
 
   @override
   void initState() {
     super.initState();
+    _initializeMessaging();
     _loadUserData();
-
-    FirebaseMessaging.instance
-        .getToken()
-        .then((token) {
-          final auth = context.read<AuthService>();
-          if (auth.currentUser != null && token != null) {
-            auth.updateFcmToken(token);
-          }
-        })
-        .catchError((_) {});
-
     _loadMarkersFromJson();
+  }
+
+  Future<void> _initializeMessaging() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (!mounted) return;
+      final auth = context.read<AuthService>();
+      if (auth.currentUser != null && token != null) {
+        await auth.updateFcmToken(token);
+      }
+    } catch (_) {}
   }
 
   double _calculateDistance(LatLng start, LatLng end) {
@@ -330,36 +329,30 @@ class _HomePageState extends State<HomePage> {
   );
 
   Future<void> _loadMarkersFromJson() async {
-    try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/points.json',
+    final String jsonString = await rootBundle.loadString('assets/points.json');
+
+    final Map<String, dynamic> jsonMap = json.decode(jsonString);
+    final List<dynamic> jsonList = jsonMap['locationsArray'];
+
+    for (int i = 0; i < jsonList.length; i++) {
+      final markerData = jsonList[i];
+      final marker = Marker(
+        markerId: MarkerId('json_${markerData['name']}_$i'),
+        position: LatLng(
+          (markerData['latitude'] as num).toDouble(),
+          (markerData['longitude'] as num).toDouble(),
+        ),
+        infoWindow: InfoWindow(
+          title: markerData['name'] as String,
+          snippet:
+              "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
+        ),
       );
+      _otherMarkers.add(marker);
+    }
 
-      final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      final List<dynamic> jsonList = jsonMap['locationsArray'];
-
-      for (int i = 0; i < jsonList.length; i++) {
-        final markerData = jsonList[i];
-        final marker = Marker(
-          markerId: MarkerId('json_${markerData['name']}_$i'),
-          position: LatLng(
-            (markerData['latitude'] as num).toDouble(),
-            (markerData['longitude'] as num).toDouble(),
-          ),
-          infoWindow: InfoWindow(
-            title: markerData['name'] as String,
-            snippet:
-                "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
-          ),
-        );
-        _otherMarkers.add(marker);
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      print('Error al cargar los marcadores JSON: $e');
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -412,7 +405,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('Seguimiento de ubicación detenido'),
         backgroundColor: Colors.blue,
       ),
@@ -462,7 +455,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: isAvailable == null ? null : _toggleAvailability,
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent, size: 32),
+            icon: Icon(Icons.logout, color: Colors.redAccent, size: 32),
             onPressed: () async => await authService.signOut(),
           ),
         ],
@@ -547,6 +540,7 @@ class _HomePageState extends State<HomePage> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Por favor activa los servicios de ubicación.'),
@@ -560,6 +554,7 @@ class _HomePageState extends State<HomePage> {
 
       if (_locationPermission == LocationPermission.denied) {
         if (_deniedOnce) {
+          if (!mounted) return;
           bool shouldRequest = await _showPermissionRationaleDialog(context);
           if (!shouldRequest) return;
         }
@@ -569,6 +564,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       if (_locationPermission == LocationPermission.deniedForever) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -593,6 +589,7 @@ class _HomePageState extends State<HomePage> {
           ),
         );
 
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Seguimiento de ubicación iniciado'),
@@ -601,6 +598,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -669,10 +667,12 @@ class _HomePageState extends State<HomePage> {
                               (user['lastName'] ?? '') as String;
                           final String initials = (() {
                             String s = '';
-                            if (firstNameStr.isNotEmpty)
+                            if (firstNameStr.isNotEmpty) {
                               s += firstNameStr[0].toUpperCase();
-                            if (lastNameStr.isNotEmpty)
+                            }
+                            if (lastNameStr.isNotEmpty) {
                               s += lastNameStr[0].toUpperCase();
+                            }
                             return s.isEmpty ? 'U' : s;
                           })();
 
