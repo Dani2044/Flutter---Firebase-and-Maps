@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,6 +14,7 @@ class HomeProvider extends ChangeNotifier {
   final Set<Marker> otherMarkers = {};
   List<Map<String, dynamic>> availableUsers = [];
   String? imageURL;
+  GoogleMapController? mapController;
 
   StreamSubscription<Position>? _positionStreamSubscription;
   bool isTrackingLocation = false;
@@ -54,12 +57,12 @@ class HomeProvider extends ChangeNotifier {
       });
     }
 
-    await loadAvailableUsers();
+    await loadAvailableUsers(uid);
     updateMarker();
     notifyListeners();
   }
 
-  Future<void> loadAvailableUsers() async {
+  Future<void> loadAvailableUsers([String? currentUid]) async {
     try {
       final ref = FirebaseDatabase.instance.ref('users');
       final snapshot = await ref.get();
@@ -70,6 +73,9 @@ class HomeProvider extends ChangeNotifier {
 
         usersData.forEach((uid, userData) {
           if (userData is Map<dynamic, dynamic>) {
+            
+            if (currentUid != null && uid == currentUid) return;
+
             final available = userData['available'] ?? false;
             if (available == true) {
               final distance = userPosition != null
@@ -146,7 +152,18 @@ class HomeProvider extends ChangeNotifier {
       );
 
       notifyListeners();
+
+     
+      try {
+        if (mapController != null) {
+          mapController!.animateCamera(CameraUpdate.newLatLngZoom(newPosition, 15));
+        }
+      } catch (_) {}
     });
+  }
+
+  void setMapController(GoogleMapController controller) {
+    mapController = controller;
   }
 
   Future<void> toggleAvailability(String uid) async {
@@ -214,6 +231,35 @@ class HomeProvider extends ChangeNotifier {
   void addJsonMarkers(List<Marker> markers) {
     otherMarkers.addAll(markers);
     notifyListeners();
+  }
+
+  Future<void> loadMarkersFromJson() async {
+    try {
+      final String jsonString = await rootBundle.loadString('assets/points.json');
+      final Map<String, dynamic> jsonMap = json.decode(jsonString);
+      final List<dynamic> jsonList = jsonMap['locationsArray'];
+
+      final List<Marker> markers = [];
+      for (int i = 0; i < jsonList.length; i++) {
+        final markerData = jsonList[i];
+        final marker = Marker(
+          markerId: MarkerId('json_${markerData['name']}_$i'),
+          position: LatLng(
+            (markerData['latitude'] as num).toDouble(),
+            (markerData['longitude'] as num).toDouble(),
+          ),
+          infoWindow: InfoWindow(
+            title: markerData['name'] as String,
+            snippet: "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
+          ),
+        );
+        markers.add(marker);
+      }
+
+      addJsonMarkers(markers);
+    } catch (e) {
+      print('Error al cargar los marcadores JSON: $e');
+    }
   }
 
   @override
