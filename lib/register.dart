@@ -293,6 +293,7 @@ class _RegisterPageState extends State<RegisterPage> {
         'longitude': model.longitude,
         // 'imageUrl': model.uploadedImageUrl,
         'createdAt': DateTime.now().toIso8601String(),
+        'available': false,
       });
 
       if (!ctx.mounted) return;
