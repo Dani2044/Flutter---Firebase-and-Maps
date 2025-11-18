@@ -34,7 +34,6 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    // remover token del database antes de salir
     try {
       await updateFcmToken(null);
     } catch (_) {}

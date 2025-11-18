@@ -121,8 +121,8 @@ class _HomePageState extends State<HomePage> {
   bool? isAvailable;
   LatLng? userPosition;
   GoogleMapController? _mapController;
-  Marker? _userMarker; // Cambiar de Set<Marker> a Marker?
-  final Set<Marker> _otherMarkers = {}; // Para los otros marcadores
+  Marker? _userMarker;
+  final Set<Marker> _otherMarkers = {};
   List<Map<String, dynamic>> availableUsers = [];
   String? imageURL;
 
@@ -213,7 +213,6 @@ class _HomePageState extends State<HomePage> {
         availableUsers.clear();
 
         usersData.forEach((uid, userData) {
-          // excluir al usuario actual
           if (uid == currentUser?.uid) return;
 
           if (userData is Map<dynamic, dynamic>) {
@@ -242,7 +241,6 @@ class _HomePageState extends State<HomePage> {
           }
         });
 
-        // Ordenar por distancia
         availableUsers.sort(
           (a, b) =>
               (a['distance'] as double).compareTo(b['distance'] as double),
@@ -264,7 +262,6 @@ class _HomePageState extends State<HomePage> {
   void _updateMarker() {
     if (userPosition == null) return;
 
-    // Actualizar solo el marcador del usuario
     _userMarker = Marker(
       markerId: const MarkerId('user_location'),
       position: userPosition!,
