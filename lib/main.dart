@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'firebase_options.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'dart:math' as math;
 
 import 'auth_service.dart';
 import 'welcome.dart';
@@ -58,11 +59,26 @@ class _HomePageState extends State<HomePage> {
   LatLng? userPosition;
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
+  List<Map<String, dynamic>> availableUsers = [];
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+  }
+
+  /// Calcula la distancia en metros entre dos coordenadas
+  double _calculateDistance(LatLng start, LatLng end) {
+    const earthRadius = 6371000; 
+    final dLat = (end.latitude - start.latitude) * math.pi / 180;
+    final dLng = (end.longitude - start.longitude) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(start.latitude * math.pi / 180) *
+            math.cos(end.latitude * math.pi / 180) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
   }
 
   Future<void> _loadUserData() async {
@@ -88,11 +104,71 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
+    // cargar usuarios disponibles
+    _loadAvailableUsers();
+
     if (mounted) {
       _updateMarker();
       setState(() {});
       if (_mapController != null && userPosition != null) {
         _mapController!.animateCamera(CameraUpdate.newLatLng(userPosition!));
+      }
+    }
+  }
+
+  Future<void> _loadAvailableUsers() async {
+    try {
+      final ref = FirebaseDatabase.instance.ref('users');
+        final currentUser = context.read<AuthService>().currentUser;
+      final snapshot = await ref.get();
+
+      if (snapshot.exists) {
+        final usersData = snapshot.value as Map<dynamic, dynamic>;
+        availableUsers.clear();
+
+        usersData.forEach((uid, userData) {
+                    // excluir al usuario actual
+                    if (uid == currentUser?.uid) return;
+
+          if (userData is Map<dynamic, dynamic>) {
+            final available = userData['available'] ?? false;
+            if (available == true) {
+              final distance = userPosition != null
+                  ? _calculateDistance(
+                      userPosition!,
+                      LatLng(
+                        (userData['latitude'] ?? 0.0).toDouble(),
+                        (userData['longitude'] ?? 0.0).toDouble(),
+                      ),
+                    )
+                  : 0.0;
+
+              availableUsers.add({
+                'uid': uid,
+                'firstName': userData['firstName'] ?? 'Usuario',
+                'lastName': userData['lastName'] ?? '',
+                'email': userData['email'] ?? '',
+                'latitude': (userData['latitude'] ?? 0.0).toDouble(),
+                'longitude': (userData['longitude'] ?? 0.0).toDouble(),
+                'distance': distance,
+              });
+            }
+          }
+        });
+
+        // Ordenar por distancia
+        availableUsers.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      print('Error cargando usuarios disponibles: $e');
+      if (mounted) {
+        setState(() {
+          availableUsers = [];
+        });
       }
     }
   }
@@ -108,6 +184,29 @@ class _HomePageState extends State<HomePage> {
         infoWindow: const InfoWindow(title: 'Tu ubicación'),
       ),
     );
+  }
+
+  void _showUserOnMap(Map<String, dynamic> user) {
+    final userPosition = LatLng(user['latitude'] as double, user['longitude'] as double);
+    final distance = user['distance'] as double;
+
+    // Agregar marcador del user q escoja
+    _markers.add(
+      Marker(
+        markerId: MarkerId(user['uid'] as String),
+        position: userPosition,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: '${user['firstName']} ${user['lastName']}',
+          snippet: 'Distancia: ${(distance / 1000).toStringAsFixed(2)} km',
+        ),
+      ),
+    );
+
+    // esto es para  q se centre el mapa en el user q se seleccione
+    _mapController?.animateCamera(CameraUpdate.newLatLng(userPosition));
+
+    setState(() {});
   }
 
   Future<void> _toggleAvailability() async {
@@ -176,6 +275,103 @@ class _HomePageState extends State<HomePage> {
           }
         },
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showAvailableUsersList(context);
+        },
+        tooltip: 'Ver usuarios disponibles',
+        child: const Icon(Icons.people),
+      ),
+    );
+  }
+
+  void _showAvailableUsersList(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: const BoxDecoration(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Usuarios Disponibles (${availableUsers.length})',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: availableUsers.isEmpty
+                    ? const Center(
+                        child: Text('No hay usuarios disponibles'),
+                      )
+                    : ListView.builder(
+                        itemCount: availableUsers.length,
+                        itemBuilder: (context, index) {
+                          final user = availableUsers[index];
+                          final distance = user['distance'] as double;
+                          final distanceKm = distance / 1000;
+
+                          final String firstNameStr = (user['firstName'] ?? '') as String;
+                          final String lastNameStr = (user['lastName'] ?? '') as String;
+                          final String initials = (() {
+                            String s = '';
+                            if (firstNameStr.isNotEmpty) s += firstNameStr[0].toUpperCase();
+                            if (lastNameStr.isNotEmpty) s += lastNameStr[0].toUpperCase();
+                            return s.isEmpty ? 'U' : s;
+                          })();
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                child: Text(initials),
+                              ),
+                              title: Text(
+                                '${user['firstName']} ${user['lastName']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(user['email'] as String),
+                                  Text(
+                                    'Distancia: ${distanceKm.toStringAsFixed(2)} km',
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              trailing: ElevatedButton.icon(
+                                onPressed: () {
+                                  _showUserOnMap(user);
+                                  Navigator.pop(context);
+                                },
+                                icon: const Icon(Icons.location_on),
+                                label: const Text('Ver'),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
