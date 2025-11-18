@@ -32,7 +32,6 @@ void main() async {
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // manejar el background message por si es necesario
 }
 
 class MyApp extends StatelessWidget {
@@ -44,11 +43,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
-    // Configuracion del Firebase Messaging: manejar permisos, guardar el token, etc.
     final messaging = FirebaseMessaging.instance;
     messaging.requestPermission();
 
-    // guardar el token cuando este disponible (osea si el usuario ingresa)
     messaging
         .getToken()
         .then((token) async {
@@ -57,10 +54,8 @@ class MyApp extends StatelessWidget {
           }
         })
         .catchError((e) {
-          // ignorar errores de token
         });
 
-    // manejo de notificacion cuando la app no estaba abierta
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null && message.data['trackedUid'] != null) {
         final trackedUid = message.data['trackedUid'];
@@ -157,7 +152,6 @@ class _HomePageState extends State<HomePage> {
     _loadMarkersFromJson();
   }
 
-  /// Calcula la distancia en metros entre dos coordenadas
   double _calculateDistance(LatLng start, LatLng end) {
     const earthRadius = 6371000;
     final dLat = (end.latitude - start.latitude) * math.pi / 180;
@@ -196,7 +190,6 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    // cargar usuarios disponibles
     _loadAvailableUsers();
 
     if (mounted) {
@@ -342,7 +335,6 @@ class _HomePageState extends State<HomePage> {
         'assets/points.json',
       );
 
-      // Decodificar el JSON y acceder a la lista de ubicaciones
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
       final List<dynamic> jsonList = jsonMap['locationsArray'];
 
@@ -370,8 +362,6 @@ class _HomePageState extends State<HomePage> {
       print('Error al cargar los marcadores JSON: $e');
     }
   }
-
-  // Permisos //
 
   void _startPositionUpdates() {
     _positionStreamSubscription?.cancel();
