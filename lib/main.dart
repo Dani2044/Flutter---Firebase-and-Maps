@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -32,6 +32,7 @@ void main() async {
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+ 
 }
 
 class MyApp extends StatelessWidget {
@@ -43,9 +44,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    // Configuracion del Firebase Messaging: manejar permisos, guardar el token, etc.
     final messaging = FirebaseMessaging.instance;
     messaging.requestPermission();
 
+    // guardar el token cuando este disponible (osea si el usuario ingresa)
     messaging
         .getToken()
         .then((token) async {
@@ -53,8 +56,11 @@ class MyApp extends StatelessWidget {
             await authService.updateFcmToken(token);
           }
         })
-        .catchError((e) {});
+        .catchError((e) {
+          // ignorar errores de token
+        });
 
+    // manejo de notificacion cuando la app no estaba abierta
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null && message.data['trackedUid'] != null) {
         final trackedUid = message.data['trackedUid'];
@@ -121,8 +127,8 @@ class _HomePageState extends State<HomePage> {
   bool? isAvailable;
   LatLng? userPosition;
   GoogleMapController? _mapController;
-  Marker? _userMarker;
-  final Set<Marker> _otherMarkers = {};
+  Marker? _userMarker; // Cambiar de Set<Marker> a Marker?
+  final Set<Marker> _otherMarkers = {}; // Para los otros marcadores
   List<Map<String, dynamic>> availableUsers = [];
   String? imageURL;
 
@@ -130,27 +136,28 @@ class _HomePageState extends State<HomePage> {
   bool _isTrackingLocation = false;
   LocationPermission? _locationPermission;
   bool _deniedOnce = false;
-  final Map<String, StreamSubscription<DatabaseEvent>> _userPositionSubscriptions = {};
+  final Map<String, StreamSubscription<DatabaseEvent>>
+  _userPositionSubscriptions = {};
 
   @override
   void initState() {
     super.initState();
-    _initializeMessaging();
     _loadUserData();
+
+    FirebaseMessaging.instance
+        .getToken()
+        .then((token) {
+          final auth = context.read<AuthService>();
+          if (auth.currentUser != null && token != null) {
+            auth.updateFcmToken(token);
+          }
+        })
+        .catchError((_) {});
+
     _loadMarkersFromJson();
   }
 
-  Future<void> _initializeMessaging() async {
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (!mounted) return;
-      final auth = context.read<AuthService>();
-      if (auth.currentUser != null && token != null) {
-        await auth.updateFcmToken(token);
-      }
-    } catch (_) {}
-  }
-
+  /// Calcula la distancia en metros entre dos coordenadas
   double _calculateDistance(LatLng start, LatLng end) {
     const earthRadius = 6371000;
     final dLat = (end.latitude - start.latitude) * math.pi / 180;
@@ -189,6 +196,7 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
+    // cargar usuarios disponibles
     _loadAvailableUsers();
 
     if (mounted) {
@@ -213,6 +221,7 @@ class _HomePageState extends State<HomePage> {
         availableUsers.clear();
 
         usersData.forEach((uid, userData) {
+          // excluir al usuario actual
           if (uid == currentUser?.uid) return;
 
           if (userData is Map<dynamic, dynamic>) {
@@ -233,6 +242,7 @@ class _HomePageState extends State<HomePage> {
                 'firstName': userData['firstName'] ?? 'Usuario',
                 'lastName': userData['lastName'] ?? '',
                 'email': userData['email'] ?? '',
+                'imageUrl': userData['imageUrl'] ?? '',
                 'latitude': (userData['latitude'] ?? 0.0).toDouble(),
                 'longitude': (userData['longitude'] ?? 0.0).toDouble(),
                 'distance': distance,
@@ -241,6 +251,7 @@ class _HomePageState extends State<HomePage> {
           }
         });
 
+        // Ordenar por distancia
         availableUsers.sort(
           (a, b) =>
               (a['distance'] as double).compareTo(b['distance'] as double),
@@ -262,6 +273,7 @@ class _HomePageState extends State<HomePage> {
   void _updateMarker() {
     if (userPosition == null) return;
 
+    // Actualizar solo el marcador del usuario
     _userMarker = Marker(
       markerId: const MarkerId('user_location'),
       position: userPosition!,
@@ -326,32 +338,41 @@ class _HomePageState extends State<HomePage> {
   );
 
   Future<void> _loadMarkersFromJson() async {
-    final String jsonString = await rootBundle.loadString('assets/points.json');
-
-    final Map<String, dynamic> jsonMap = json.decode(jsonString);
-    final List<dynamic> jsonList = jsonMap['locationsArray'];
-
-    for (int i = 0; i < jsonList.length; i++) {
-      final markerData = jsonList[i];
-      final marker = Marker(
-        markerId: MarkerId('json_${markerData['name']}_$i'),
-        position: LatLng(
-          (markerData['latitude'] as num).toDouble(),
-          (markerData['longitude'] as num).toDouble(),
-        ),
-        infoWindow: InfoWindow(
-          title: markerData['name'] as String,
-          snippet:
-              "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
-        ),
+    try {
+      final String jsonString = await rootBundle.loadString(
+        'assets/points.json',
       );
-      _otherMarkers.add(marker);
-    }
 
-    if (mounted) {
-      setState(() {});
+      // Decodificar el JSON y acceder a la lista de ubicaciones
+      final Map<String, dynamic> jsonMap = json.decode(jsonString);
+      final List<dynamic> jsonList = jsonMap['locationsArray'];
+
+      for (int i = 0; i < jsonList.length; i++) {
+        final markerData = jsonList[i];
+        final marker = Marker(
+          markerId: MarkerId('json_${markerData['name']}_$i'),
+          position: LatLng(
+            (markerData['latitude'] as num).toDouble(),
+            (markerData['longitude'] as num).toDouble(),
+          ),
+          infoWindow: InfoWindow(
+            title: markerData['name'] as String,
+            snippet:
+                "Lat: ${markerData['latitude']}, Lng: ${markerData['longitude']}",
+          ),
+        );
+        _otherMarkers.add(marker);
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error al cargar los marcadores JSON: $e');
     }
   }
+
+  // Permisos //
 
   void _startPositionUpdates() {
     _positionStreamSubscription?.cancel();
@@ -402,30 +423,12 @@ class _HomePageState extends State<HomePage> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      const SnackBar(
         content: Text('Seguimiento de ubicación detenido'),
         backgroundColor: Colors.blue,
       ),
     );
   }
-
-Future<void> _setUserUnavailable() async {
-  try {
-    final auth = context.read<AuthService>();
-    final user = auth.currentUser;
-    if (user == null) return;
-
-    final ref = FirebaseDatabase.instance.ref('users/${user.uid}/available');
-    await ref.set(false);
-    if (mounted) {
-      setState(() {
-        isAvailable = false;
-      });
-    }
-  } catch (e) {
-    debugPrint('Error al marcar usuario como no disponible: $e');
-  }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -470,11 +473,8 @@ Future<void> _setUserUnavailable() async {
             onPressed: isAvailable == null ? null : _toggleAvailability,
           ),
           IconButton(
-            icon: Icon(Icons.logout, color: Colors.redAccent, size: 32),
-            onPressed: () async {
-              await _setUserUnavailable();
-              await authService.signOut();
-            }
+            icon: const Icon(Icons.logout, color: Colors.redAccent, size: 32),
+            onPressed: () async => await authService.signOut(),
           ),
         ],
       ),
@@ -542,7 +542,6 @@ Future<void> _setUserUnavailable() async {
 
   @override
   void dispose() {
-    _setUserUnavailable();
     _positionStreamSubscription?.cancel();
     for (var sub in _userPositionSubscriptions.values) {
       sub.cancel();
@@ -559,7 +558,6 @@ Future<void> _setUserUnavailable() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Por favor activa los servicios de ubicación.'),
@@ -573,7 +571,6 @@ Future<void> _setUserUnavailable() async {
 
       if (_locationPermission == LocationPermission.denied) {
         if (_deniedOnce) {
-          if (!mounted) return;
           bool shouldRequest = await _showPermissionRationaleDialog(context);
           if (!shouldRequest) return;
         }
@@ -583,7 +580,6 @@ Future<void> _setUserUnavailable() async {
       }
 
       if (_locationPermission == LocationPermission.deniedForever) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -608,7 +604,6 @@ Future<void> _setUserUnavailable() async {
           ),
         );
 
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Seguimiento de ubicación iniciado'),
@@ -617,7 +612,6 @@ Future<void> _setUserUnavailable() async {
         );
       }
     } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -686,12 +680,10 @@ Future<void> _setUserUnavailable() async {
                               (user['lastName'] ?? '') as String;
                           final String initials = (() {
                             String s = '';
-                            if (firstNameStr.isNotEmpty) {
+                            if (firstNameStr.isNotEmpty)
                               s += firstNameStr[0].toUpperCase();
-                            }
-                            if (lastNameStr.isNotEmpty) {
+                            if (lastNameStr.isNotEmpty)
                               s += lastNameStr[0].toUpperCase();
-                            }
                             return s.isEmpty ? 'U' : s;
                           })();
 
@@ -701,7 +693,16 @@ Future<void> _setUserUnavailable() async {
                               vertical: 8,
                             ),
                             child: ListTile(
-                              leading: CircleAvatar(child: Text(initials)),
+                              leading: (() {
+                                final imageUrl = (user['imageUrl'] ?? '') as String;
+                                if (imageUrl.isNotEmpty) {
+                                  return CircleAvatar(
+                                    backgroundColor: Colors.grey[300],
+                                    backgroundImage: NetworkImage(imageUrl),
+                                  );
+                                }
+                                return CircleAvatar(child: Text(initials));
+                              })(),
                               title: Text(
                                 '${user['firstName']} ${user['lastName']}',
                                 style: const TextStyle(
