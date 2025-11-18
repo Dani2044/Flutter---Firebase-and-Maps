@@ -4,8 +4,9 @@ import 'package:provider/provider.dart';
 import 'auth_service.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
-// import 'package:firebase_storage/firebase_storage.dart';
-// import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class AppBottomBarButtons extends StatelessWidget {
   const AppBottomBarButtons({
@@ -76,13 +77,14 @@ class RegisterFormModel extends ChangeNotifier {
   String passwordError = '';
   String idError = '';
   String locationError = '';
+  String imageError = '';
   String backendError = '';
 
   double? latitude;
   double? longitude;
 
-  // String? localImagePath;
-  // String? uploadedImageUrl;
+  String? localImagePath;
+  String? uploadedImageUrl;
 
   bool _validEmailAddress(String email) {
     final regex = RegExp(r"^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
@@ -111,6 +113,12 @@ class RegisterFormModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setLocalImagePath(String path) {
+    localImagePath = path;
+    imageError = '';
+    notifyListeners();
+  }
+
   void _resetErrors() {
     firstNameError = '';
     lastNameError = '';
@@ -118,6 +126,7 @@ class RegisterFormModel extends ChangeNotifier {
     passwordError = '';
     idError = '';
     locationError = '';
+    imageError = '';
   }
 
   bool validateForm({
@@ -167,6 +176,11 @@ class RegisterFormModel extends ChangeNotifier {
 
     if (latitude == null || longitude == null) {
       locationError = 'Location is required. Please get your location.';
+      isValid = false;
+    }
+
+    if (localImagePath == null) {
+      imageError = 'Profile image is required.';
       isValid = false;
     }
 
@@ -269,16 +283,26 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
 
-      // if (model.localImagePath != null) {
-      //   final storageRef = FirebaseStorage.instance
-      //       .ref()
-      //       .child('profile_images')
-      //       .child('${user.uid}.jpg');
-      //
-      //   final file = File(model.localImagePath!);
-      //   await storageRef.putFile(file);
-      //   model.uploadedImageUrl = await storageRef.getDownloadURL();
-      // }
+      if (model.localImagePath == null) {
+        model.setBackendError('Profile image is required.');
+        return;
+      }
+
+      final storage = FirebaseStorage.instanceFor(
+        bucket: 'gs://taller-3-4fca0.firebasestorage.app',
+      );
+
+      final storageRef = storage
+          .ref()
+          .child('profile_images')
+          .child('${user.uid}.jpg');
+
+      final file = File(model.localImagePath!);
+
+      await storageRef.putFile(file);
+
+      final downloadUrl = await storageRef.getDownloadURL();
+      model.uploadedImageUrl = downloadUrl;
 
       final dbRef = FirebaseDatabase.instance.refFromURL(
         'https://taller-3-4fca0-default-rtdb.firebaseio.com/users/${user.uid}',
@@ -291,7 +315,9 @@ class _RegisterPageState extends State<RegisterPage> {
         'idNumber': idNumber,
         'latitude': model.latitude,
         'longitude': model.longitude,
-        // 'imageUrl': model.uploadedImageUrl,
+        'imageRef':
+            'gs://taller-3-4fca0.firebasestorage.app/profile_images/${user.uid}.jpg',
+        'imageUrl': model.uploadedImageUrl,
         'createdAt': DateTime.now().toIso8601String(),
       });
 
@@ -320,7 +346,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 child: BottomStepperWidget(),
               ),
             ),
-
             body: SingleChildScrollView(
               child: Padding(
                 padding: const EdgeInsets.all(30.0),
@@ -337,15 +362,12 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         const SizedBox(height: 20.0),
-
                         Image.asset(
                           "assets/images/register.png",
                           width: 90,
                           height: 90,
                         ),
-
                         const SizedBox(height: 40),
-
                         TextField(
                           controller: controllerFirstName,
                           decoration: InputDecoration(
@@ -356,7 +378,6 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-
                         TextField(
                           controller: controllerLastName,
                           decoration: InputDecoration(
@@ -367,7 +388,6 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-
                         TextField(
                           controller: controllerEmail,
                           decoration: InputDecoration(
@@ -379,7 +399,6 @@ class _RegisterPageState extends State<RegisterPage> {
                           keyboardType: TextInputType.emailAddress,
                         ),
                         const SizedBox(height: 10),
-
                         TextField(
                           controller: controllerPassword,
                           decoration: InputDecoration(
@@ -391,7 +410,6 @@ class _RegisterPageState extends State<RegisterPage> {
                           obscureText: true,
                         ),
                         const SizedBox(height: 10),
-
                         TextField(
                           controller: controllerIdNumber,
                           decoration: InputDecoration(
@@ -403,7 +421,6 @@ class _RegisterPageState extends State<RegisterPage> {
                           keyboardType: TextInputType.number,
                         ),
                         const SizedBox(height: 20),
-
                         Row(
                           children: [
                             Expanded(
@@ -431,25 +448,37 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ),
                           ),
-
                         const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(
+                              source: ImageSource.gallery,
+                            );
 
-                        // OutlinedButton.icon(
-                        //   onPressed: () async {
-                        //     // final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                        //     // if (picked != null) {
-                        //     //   model.setLocalImagePath(picked.path);
-                        //     // }
-                        //   },
-                        //   icon: const Icon(Icons.image),
-                        //   label: Text(
-                        //     model.localImagePath == null
-                        //         ? 'Select profile image'
-                        //         : 'Image selected',
-                        //   ),
-                        // ),
+                            if (picked != null) {
+                              model.setLocalImagePath(picked.path);
+                            }
+                          },
+                          icon: const Icon(Icons.image),
+                          label: Text(
+                            model.localImagePath == null
+                                ? 'Select profile image'
+                                : 'Image selected',
+                          ),
+                        ),
+                        if (model.imageError.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              model.imageError,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 10),
-
                         if (model.backendError.isNotEmpty)
                           Text(
                             model.backendError,
@@ -464,7 +493,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               ),
             ),
-
             buttons: [
               ButtonWidget(
                 isFilled: true,
